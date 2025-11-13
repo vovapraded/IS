@@ -1,4 +1,4 @@
-package org.example.controller;
+package org.example.domain.route.controller;
 
 import jakarta.inject.Inject;
 import jakarta.ws.rs.BadRequestException;
@@ -14,8 +14,10 @@ import jakarta.ws.rs.Produces;
 import jakarta.ws.rs.QueryParam;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
-import org.example.dto.*;
-import org.example.service.RouteServiceMB;
+import org.example.domain.route.dto.*;
+import org.example.domain.route.service.RouteServiceMB;
+import org.example.domain.coordinates.dto.CoordinatesDto;
+import org.example.domain.location.dto.LocationDto;
 
 import java.util.HashMap;
 import java.util.List;
@@ -79,10 +81,21 @@ public class RouteResource {
         return routeService.updateRoute(dto);
     }
 
+    @GET
+    @Path("/{id}/check-dependencies")
+    public Response checkDependencies(@PathParam("id") Integer id) {
+        Map<String, Object> dependencyInfo = routeService.checkDependencies(id);
+        return Response.ok(dependencyInfo).build();
+    }
+
     @DELETE
     @Path("/{id}")
-    public Response delete(@PathParam("id") Integer id) {
-        routeService.delete(id);
+    public Response delete(@PathParam("id") Integer id, @QueryParam("targetRouteId") Integer targetRouteId) {
+        if (targetRouteId != null) {
+            routeService.deleteWithRebinding(id, targetRouteId);
+        } else {
+            routeService.delete(id);
+        }
         return Response.noContent().build();
     }
 
@@ -144,5 +157,37 @@ public class RouteResource {
                     .entity(Map.of("error", "Invalid request data: " + e.getMessage()))
                     .build();
         }
+    }
+
+    // Эндпоинты для работы с связанными объектами
+
+    @GET
+    @Path("/related/coordinates")
+    public List<CoordinatesDto> getAvailableCoordinates() {
+        return routeService.getAvailableCoordinates();
+    }
+
+    @GET
+    @Path("/related/locations")
+    public List<LocationDto> getAvailableLocations() {
+        return routeService.getAvailableLocations();
+    }
+
+    @GET
+    @Path("/related/locations/from")
+    public List<LocationDto> getAvailableFromLocations() {
+        return routeService.getAvailableFromLocations();
+    }
+
+    @GET
+    @Path("/related/locations/to")
+    public List<LocationDto> getAvailableToLocations() {
+        return routeService.getAvailableToLocations();
+    }
+
+    @GET
+    @Path("/related/location-names")
+    public List<String> getAvailableLocationNames() {
+        return routeService.getAvailableLocationNames();
     }
 }

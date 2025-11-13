@@ -1,7 +1,7 @@
-package org.example.mapper;
+package org.example.domain.coordinates.mapper;
 
-import org.example.dto.CoordinatesDto;
-import org.example.entity.Coordinates;
+import org.example.domain.coordinates.dto.CoordinatesDto;
+import org.example.domain.coordinates.entity.Coordinates;
 
 public class CoordinatesMapper {
 
@@ -10,6 +10,7 @@ public class CoordinatesMapper {
             return null;
         }
         return new CoordinatesDto(
+                entity.getId(),
                 entity.getX(),
                 entity.getY()
         );
@@ -20,6 +21,7 @@ public class CoordinatesMapper {
             return null;
         }
         return Coordinates.builder()
+                .id(dto.id())
                 .x(dto.x())
                 .y(dto.y())
                 .build();

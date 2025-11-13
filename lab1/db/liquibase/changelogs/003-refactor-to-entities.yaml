@@ -1,0 +1,140 @@
+databaseChangeLog:
+  - changeSet:
+      id: 003-create-coordinates-table
+      author: system
+      comment: Create coordinates table as separate entity
+      changes:
+        - sql:
+            sql: |
+              CREATE TABLE coordinates (
+                  id SERIAL PRIMARY KEY,
+                  x FLOAT NOT NULL,
+                  y DOUBLE PRECISION NOT NULL CHECK (y <= 807),
+                  UNIQUE(x, y)
+              );
+
+  - changeSet:
+      id: 003-create-locations-table
+      author: system
+      comment: Create locations table as separate entity
+      changes:
+        - sql:
+            sql: |
+              CREATE TABLE locations (
+                  id SERIAL PRIMARY KEY,
+                  x DOUBLE PRECISION NOT NULL,
+                  y DOUBLE PRECISION NOT NULL,
+                  name VARCHAR,
+                  UNIQUE(x, y, name)
+              );
+
+  - changeSet:
+      id: 003-migrate-existing-data
+      author: system
+      comment: Migrate existing embedded data to separate tables
+      changes:
+        - sql:
+            sql: |
+              -- Migrate unique coordinates
+              INSERT INTO coordinates (x, y)
+              SELECT DISTINCT r.x, r.y 
+              FROM routes r 
+              WHERE r.x IS NOT NULL AND r.y IS NOT NULL
+              ON CONFLICT (x, y) DO NOTHING;
+              
+              -- Migrate unique from locations
+              INSERT INTO locations (x, y, name)
+              SELECT DISTINCT r.from_x, r.from_y, r.from_name 
+              FROM routes r 
+              WHERE r.from_x IS NOT NULL AND r.from_y IS NOT NULL
+              ON CONFLICT (x, y, name) DO NOTHING;
+              
+              -- Migrate unique to locations
+              INSERT INTO locations (x, y, name)
+              SELECT DISTINCT r.to_x, r.to_y, r.to_name 
+              FROM routes r 
+              WHERE r.to_x IS NOT NULL AND r.to_y IS NOT NULL
+              ON CONFLICT (x, y, name) DO NOTHING;
+
+  - changeSet:
+      id: 003-add-fk-columns-to-routes
+      author: system
+      comment: Add foreign key columns to routes table
+      changes:
+        - sql:
+            sql: |
+              -- Add FK columns
+              ALTER TABLE routes ADD COLUMN coordinates_id INTEGER;
+              ALTER TABLE routes ADD COLUMN from_location_id INTEGER;
+              ALTER TABLE routes ADD COLUMN to_location_id INTEGER;
+              
+              -- Update FK references
+              UPDATE routes r SET coordinates_id = c.id 
+              FROM coordinates c 
+              WHERE r.x = c.x AND r.y = c.y;
+              
+              UPDATE routes r SET from_location_id = l.id 
+              FROM locations l 
+              WHERE r.from_x = l.x AND r.from_y = l.y 
+              AND (r.from_name = l.name OR (r.from_name IS NULL AND l.name IS NULL));
+              
+              UPDATE routes r SET to_location_id = l.id 
+              FROM locations l 
+              WHERE r.to_x = l.x AND r.to_y = l.y 
+              AND (r.to_name = l.name OR (r.to_name IS NULL AND l.name IS NULL));
+
+  - changeSet:
+      id: 003-add-fk-constraints
+      author: system
+      comment: Add foreign key constraints and drop old columns
+      changes:
+        - sql:
+            sql: |
+              -- Add NOT NULL constraints
+              ALTER TABLE routes ALTER COLUMN coordinates_id SET NOT NULL;
+              ALTER TABLE routes ALTER COLUMN from_location_id SET NOT NULL;
+              ALTER TABLE routes ALTER COLUMN to_location_id SET NOT NULL;
+              
+              -- Add foreign key constraints
+              ALTER TABLE routes ADD CONSTRAINT fk_routes_coordinates 
+                  FOREIGN KEY (coordinates_id) REFERENCES coordinates(id);
+              ALTER TABLE routes ADD CONSTRAINT fk_routes_from_location 
+                  FOREIGN KEY (from_location_id) REFERENCES locations(id);
+              ALTER TABLE routes ADD CONSTRAINT fk_routes_to_location 
+                  FOREIGN KEY (to_location_id) REFERENCES locations(id);
+              
+              -- Drop old embedded columns
+              ALTER TABLE routes DROP COLUMN x;
+              ALTER TABLE routes DROP COLUMN y;
+              ALTER TABLE routes DROP COLUMN from_x;
+              ALTER TABLE routes DROP COLUMN from_y;
+              ALTER TABLE routes DROP COLUMN from_name;
+              ALTER TABLE routes DROP COLUMN to_x;
+              ALTER TABLE routes DROP COLUMN to_y;
+              ALTER TABLE routes DROP COLUMN to_name;
+
+      rollback:
+        - sql:
+            sql: |
+              -- This is a complex rollback, would need to restore embedded structure
+              -- For now, drop new tables and restore old schema
+              DROP TABLE IF EXISTS routes CASCADE;
+              DROP TABLE IF EXISTS coordinates CASCADE;
+              DROP TABLE IF EXISTS locations CASCADE;
+              
+              -- Restore old schema (from 001-initial-schema.yaml)
+              CREATE TABLE routes (
+                  id SERIAL PRIMARY KEY CHECK (id > 0),
+                  name VARCHAR NOT NULL CHECK (name != '' AND LENGTH(TRIM(name)) > 0),
+                  x FLOAT,
+                  y DOUBLE PRECISION NOT NULL CHECK (y <= 807),
+                  from_x DOUBLE PRECISION NOT NULL,
+                  from_y DOUBLE PRECISION NOT NULL,
+                  from_name VARCHAR,
+                  to_x DOUBLE PRECISION NOT NULL,
+                  to_y DOUBLE PRECISION NOT NULL,
+                  to_name VARCHAR,
+                  distance BIGINT NOT NULL CHECK(distance > 1),
+                  rating BIGINT NOT NULL CHECK(rating > 0),
+                  creation_date TIMESTAMPTZ NOT NULL DEFAULT NOW()
+              );

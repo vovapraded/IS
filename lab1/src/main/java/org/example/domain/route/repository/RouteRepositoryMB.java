@@ -1,11 +1,11 @@
-package org.example.repository;
+package org.example.domain.route.repository;
 
 import jakarta.ejb.Stateless;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
-import org.example.dto.RouteUpdateDto;
-import org.example.entity.Route;
-import org.example.mapper.RouteMapper;
+import org.example.domain.route.dto.RouteUpdateDto;
+import org.example.domain.route.entity.Route;
+import org.example.domain.route.mapper.RouteMapper;
 
 import java.util.List;
 

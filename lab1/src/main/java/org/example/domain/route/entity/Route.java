@@ -1,17 +1,17 @@
-package org.example.entity;
+package org.example.domain.route.entity;
 
 import java.time.ZonedDateTime;
 
-import jakarta.persistence.AttributeOverride;
-import jakarta.persistence.AttributeOverrides;
 import jakarta.persistence.Column;
-import jakarta.persistence.Embedded;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EntityResult;
+import jakarta.persistence.FetchType;
 import jakarta.persistence.FieldResult;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.SqlResultSetMapping;
 import jakarta.persistence.SqlResultSetMappings;
@@ -24,6 +24,8 @@ import jakarta.validation.constraints.Positive;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+import org.example.domain.coordinates.entity.Coordinates;
+import org.example.domain.location.entity.Location;
 
 @Entity
 @Table(name = "routes")
@@ -65,7 +67,8 @@ public class Route {
 
     @NotNull
     @Valid
-    @Embedded
+    @ManyToOne(optional = false, fetch = FetchType.LAZY)
+    @JoinColumn(name = "coordinates_id", nullable = false)
     private Coordinates coordinates;
 
     @NotNull
@@ -74,22 +77,14 @@ public class Route {
 
     @NotNull
     @Valid
-    @Embedded
-    @AttributeOverrides({
-            @AttributeOverride(name = "x", column = @Column(name = "from_x", nullable = false)),
-            @AttributeOverride(name = "y", column = @Column(name = "from_y", nullable = false)),
-            @AttributeOverride(name = "name", column = @Column(name = "from_name"))
-    })
+    @ManyToOne(optional = false, fetch = FetchType.LAZY)
+    @JoinColumn(name = "from_location_id", nullable = false)
     private Location from;
 
     @NotNull
     @Valid
-    @Embedded
-    @AttributeOverrides({
-            @AttributeOverride(name = "x", column = @Column(name = "to_x", nullable = false)),
-            @AttributeOverride(name = "y", column = @Column(name = "to_y", nullable = false)),
-            @AttributeOverride(name = "name", column = @Column(name = "to_name"))
-    })
+    @ManyToOne(optional = false, fetch = FetchType.LAZY)
+    @JoinColumn(name = "to_location_id", nullable = false)
     private Location to;
 
 

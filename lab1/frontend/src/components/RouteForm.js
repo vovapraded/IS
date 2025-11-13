@@ -1,14 +1,16 @@
-import React from "react";
+import React, { useState, useEffect } from "react";
 import { useFormik } from "formik";
 import * as Yup from "yup";
 import {
-  Button, TextField, Grid, Typography, Box, Paper, 
-  Card, CardContent, CardActions, Divider, Accordion, AccordionSummary, AccordionDetails
+  Button, TextField, Grid, Typography, Box, Paper,
+  Card, CardContent, CardActions, Divider, Accordion, AccordionSummary, AccordionDetails,
+  Switch, FormControlLabel, Autocomplete, Chip
 } from "@mui/material";
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import SaveIcon from '@mui/icons-material/Save';
 import AddIcon from '@mui/icons-material/Add';
 import CancelIcon from '@mui/icons-material/Cancel';
+import api from "../api";
 
 // Схема валидации с улучшенными сообщениями
 const validationSchema = Yup.object().shape({
@@ -43,6 +45,16 @@ const validationSchema = Yup.object().shape({
 });
 
 function RouteForm({ initialValues, onSubmit, onCancel }) {
+  // Состояния для переключения между созданием новых и выбором существующих объектов
+  const [useExistingCoordinates, setUseExistingCoordinates] = useState(false);
+  const [useExistingFromLocation, setUseExistingFromLocation] = useState(false);
+  const [useExistingToLocation, setUseExistingToLocation] = useState(false);
+
+  // Состояния для доступных данных
+  const [availableCoordinates, setAvailableCoordinates] = useState([]);
+  const [availableLocations, setAvailableLocations] = useState([]);
+  const [locationNames, setLocationNames] = useState([]);
+
   const formik = useFormik({
     initialValues,
     validationSchema,
@@ -51,6 +63,65 @@ function RouteForm({ initialValues, onSubmit, onCancel }) {
   });
 
   const isEditing = !!initialValues.id;
+
+  // Загрузка доступных данных при монтировании компонента
+  useEffect(() => {
+    const loadRelatedData = async () => {
+      try {
+        const [coordsResponse, locationsResponse, namesResponse] = await Promise.all([
+          api.get("/routes/related/coordinates"),
+          api.get("/routes/related/locations"),
+          api.get("/routes/related/location-names")
+        ]);
+        
+        setAvailableCoordinates(coordsResponse.data || []);
+        setAvailableLocations(locationsResponse.data || []);
+        setLocationNames(namesResponse.data || []);
+      } catch (err) {
+        console.error("Ошибка загрузки связанных данных:", err);
+      }
+    };
+    
+    loadRelatedData();
+  }, []);
+
+  // Обработчики выбора существующих объектов
+  const handleCoordinatesSelect = (event, value) => {
+    if (value) {
+      formik.setValues({
+        ...formik.values,
+        coordinatesX: value.x,
+        coordinatesY: value.y
+      });
+    }
+  };
+
+  const handleFromLocationSelect = (event, value) => {
+    if (value) {
+      formik.setValues({
+        ...formik.values,
+        fromX: value.x,
+        fromY: value.y,
+        fromName: value.name || ""
+      });
+    }
+  };
+
+  const handleToLocationSelect = (event, value) => {
+    if (value) {
+      formik.setValues({
+        ...formik.values,
+        toX: value.x,
+        toY: value.y,
+        toName: value.name || ""
+      });
+    }
+  };
+
+  // Форматирование для отображения в автокомплитах
+  const formatCoordinates = (coords) => `(${coords.x}, ${coords.y})`;
+  const formatLocation = (location) =>
+    `(${location.x}, ${location.y})${location.name ? ` - ${location.name}` : ''}`;
 
   return (
     <Paper elevation={3} sx={{ mt: 4 }}>
@@ -124,34 +195,90 @@ function RouteForm({ initialValues, onSubmit, onCancel }) {
               </Typography>
             </AccordionSummary>
             <AccordionDetails>
-              <Grid container spacing={2}>
-                <Grid item xs={12} sm={6}>
-                  <TextField
-                    fullWidth
-                    type="number"
-                    name="coordinatesX"
-                    label="Координата X (опционально)"
-                    placeholder="Оставьте пустым для null"
-                    value={formik.values.coordinatesX}
-                    onChange={formik.handleChange}
-                    error={formik.touched.coordinatesX && !!formik.errors.coordinatesX}
-                    helperText={formik.touched.coordinatesX && formik.errors.coordinatesX}
-                  />
+              <Box sx={{ mb: 2 }}>
+                <FormControlLabel
+                  control={
+                    <Switch
+                      checked={useExistingCoordinates}
+                      onChange={(e) => setUseExistingCoordinates(e.target.checked)}
+                    />
+                  }
+                  label="Выбрать из существующих координат"
+                />
+              </Box>
+              
+              {useExistingCoordinates ? (
+                <Grid container spacing={2}>
+                  <Grid item xs={12}>
+                    <Autocomplete
+                      options={availableCoordinates}
+                      getOptionLabel={formatCoordinates}
+                      onChange={handleCoordinatesSelect}
+                      renderOption={(props, option) => (
+                        <Box component="li" {...props}>
+                          <Chip
+                            label={formatCoordinates(option)}
+                            size="small"
+                            sx={{ mr: 1 }}
+                          />
+                        </Box>
+                      )}
+                      renderInput={(params) => (
+                        <TextField
+                          {...params}
+                          label="Выберите координаты"
+                          placeholder="Начните вводить координаты..."
+                        />
+                      )}
+                    />
+                  </Grid>
+                  <Grid item xs={12} sm={6}>
+                    <TextField
+                      fullWidth
+                      label="Выбранная X"
+                      value={formik.values.coordinatesX}
+                      InputProps={{ readOnly: true }}
+                    />
+                  </Grid>
+                  <Grid item xs={12} sm={6}>
+                    <TextField
+                      fullWidth
+                      label="Выбранная Y"
+                      value={formik.values.coordinatesY}
+                      InputProps={{ readOnly: true }}
+                    />
+                  </Grid>
                 </Grid>
-                <Grid item xs={12} sm={6}>
-                  <TextField 
-                    fullWidth 
-                    type="number" 
-                    name="coordinatesY" 
-                    label="Координата Y (≤ 807)"
-                    value={formik.values.coordinatesY} 
-                    onChange={formik.handleChange}
-                    error={formik.touched.coordinatesY && !!formik.errors.coordinatesY}
-                    helperText={formik.touched.coordinatesY && formik.errors.coordinatesY}
-                    inputProps={{ max: 807 }}
-                  />
+              ) : (
+                <Grid container spacing={2}>
+                  <Grid item xs={12} sm={6}>
+                    <TextField
+                      fullWidth
+                      type="number"
+                      name="coordinatesX"
+                      label="Координата X (опционально)"
+                      placeholder="Оставьте пустым для null"
+                      value={formik.values.coordinatesX}
+                      onChange={formik.handleChange}
+                      error={formik.touched.coordinatesX && !!formik.errors.coordinatesX}
+                      helperText={formik.touched.coordinatesX && formik.errors.coordinatesX}
+                    />
+                  </Grid>
+                  <Grid item xs={12} sm={6}>
+                    <TextField
+                      fullWidth
+                      type="number"
+                      name="coordinatesY"
+                      label="Координата Y (≤ 807)"
+                      value={formik.values.coordinatesY}
+                      onChange={formik.handleChange}
+                      error={formik.touched.coordinatesY && !!formik.errors.coordinatesY}
+                      helperText={formik.touched.coordinatesY && formik.errors.coordinatesY}
+                      inputProps={{ max: 807 }}
+                    />
+                  </Grid>
                 </Grid>
-              </Grid>
+              )}
             </AccordionDetails>
           </Accordion>
 
@@ -163,42 +290,106 @@ function RouteForm({ initialValues, onSubmit, onCancel }) {
               </Typography>
             </AccordionSummary>
             <AccordionDetails>
-              <Grid container spacing={2}>
-                <Grid item xs={12} sm={4}>
-                  <TextField 
-                    fullWidth 
-                    name="fromX" 
-                    label="X координата" 
-                    type="number" 
-                    value={formik.values.fromX} 
-                    onChange={formik.handleChange}
-                    error={formik.touched.fromX && !!formik.errors.fromX}
-                    helperText={formik.touched.fromX && formik.errors.fromX}
-                  />
+              <Box sx={{ mb: 2 }}>
+                <FormControlLabel
+                  control={
+                    <Switch
+                      checked={useExistingFromLocation}
+                      onChange={(e) => setUseExistingFromLocation(e.target.checked)}
+                    />
+                  }
+                  label="Выбрать из существующих локаций отправления"
+                />
+              </Box>
+              
+              {useExistingFromLocation ? (
+                <Grid container spacing={2}>
+                  <Grid item xs={12}>
+                    <Autocomplete
+                      options={availableLocations}
+                      getOptionLabel={formatLocation}
+                      onChange={handleFromLocationSelect}
+                      renderOption={(props, option) => (
+                        <Box component="li" {...props}>
+                          <Chip
+                            label={formatLocation(option)}
+                            size="small"
+                            sx={{ mr: 1 }}
+                          />
+                        </Box>
+                      )}
+                      renderInput={(params) => (
+                        <TextField
+                          {...params}
+                          label="Выберите точку отправления"
+                          placeholder="Начните вводить локацию..."
+                        />
+                      )}
+                    />
+                  </Grid>
+                  <Grid item xs={12} sm={4}>
+                    <TextField
+                      fullWidth
+                      label="Выбранная X"
+                      value={formik.values.fromX}
+                      InputProps={{ readOnly: true }}
+                    />
+                  </Grid>
+                  <Grid item xs={12} sm={4}>
+                    <TextField
+                      fullWidth
+                      label="Выбранная Y"
+                      value={formik.values.fromY}
+                      InputProps={{ readOnly: true }}
+                    />
+                  </Grid>
+                  <Grid item xs={12} sm={4}>
+                    <TextField
+                      fullWidth
+                      label="Выбранное название"
+                      value={formik.values.fromName}
+                      InputProps={{ readOnly: true }}
+                    />
+                  </Grid>
                 </Grid>
-                <Grid item xs={12} sm={4}>
-                  <TextField 
-                    fullWidth 
-                    name="fromY" 
-                    label="Y координата" 
-                    type="number" 
-                    value={formik.values.fromY} 
-                    onChange={formik.handleChange}
-                    error={formik.touched.fromY && !!formik.errors.fromY}
-                    helperText={formik.touched.fromY && formik.errors.fromY}
-                  />
+              ) : (
+                <Grid container spacing={2}>
+                  <Grid item xs={12} sm={4}>
+                    <TextField
+                      fullWidth
+                      name="fromX"
+                      label="X координата"
+                      type="number"
+                      value={formik.values.fromX}
+                      onChange={formik.handleChange}
+                      error={formik.touched.fromX && !!formik.errors.fromX}
+                      helperText={formik.touched.fromX && formik.errors.fromX}
+                    />
+                  </Grid>
+                  <Grid item xs={12} sm={4}>
+                    <TextField
+                      fullWidth
+                      name="fromY"
+                      label="Y координата"
+                      type="number"
+                      value={formik.values.fromY}
+                      onChange={formik.handleChange}
+                      error={formik.touched.fromY && !!formik.errors.fromY}
+                      helperText={formik.touched.fromY && formik.errors.fromY}
+                    />
+                  </Grid>
+                  <Grid item xs={12} sm={4}>
+                    <TextField
+                      fullWidth
+                      name="fromName"
+                      label="Название (опционально)"
+                      placeholder="Например: База отдыха"
+                      value={formik.values.fromName}
+                      onChange={formik.handleChange}
+                    />
+                  </Grid>
                 </Grid>
-                <Grid item xs={12} sm={4}>
-                  <TextField 
-                    fullWidth 
-                    name="fromName" 
-                    label="Название (опционально)" 
-                    placeholder="Например: База отдыха"
-                    value={formik.values.fromName} 
-                    onChange={formik.handleChange}
-                  />
-                </Grid>
-              </Grid>
+              )}
             </AccordionDetails>
           </Accordion>
 
@@ -210,42 +401,106 @@ function RouteForm({ initialValues, onSubmit, onCancel }) {
               </Typography>
             </AccordionSummary>
             <AccordionDetails>
-              <Grid container spacing={2}>
-                <Grid item xs={12} sm={4}>
-                  <TextField 
-                    fullWidth 
-                    name="toX" 
-                    label="X координата" 
-                    type="number" 
-                    value={formik.values.toX} 
-                    onChange={formik.handleChange}
-                    error={formik.touched.toX && !!formik.errors.toX}
-                    helperText={formik.touched.toX && formik.errors.toX}
-                  />
+              <Box sx={{ mb: 2 }}>
+                <FormControlLabel
+                  control={
+                    <Switch
+                      checked={useExistingToLocation}
+                      onChange={(e) => setUseExistingToLocation(e.target.checked)}
+                    />
+                  }
+                  label="Выбрать из существующих локаций назначения"
+                />
+              </Box>
+              
+              {useExistingToLocation ? (
+                <Grid container spacing={2}>
+                  <Grid item xs={12}>
+                    <Autocomplete
+                      options={availableLocations}
+                      getOptionLabel={formatLocation}
+                      onChange={handleToLocationSelect}
+                      renderOption={(props, option) => (
+                        <Box component="li" {...props}>
+                          <Chip
+                            label={formatLocation(option)}
+                            size="small"
+                            sx={{ mr: 1 }}
+                          />
+                        </Box>
+                      )}
+                      renderInput={(params) => (
+                        <TextField
+                          {...params}
+                          label="Выберите точку назначения"
+                          placeholder="Начните вводить локацию..."
+                        />
+                      )}
+                    />
+                  </Grid>
+                  <Grid item xs={12} sm={4}>
+                    <TextField
+                      fullWidth
+                      label="Выбранная X"
+                      value={formik.values.toX}
+                      InputProps={{ readOnly: true }}
+                    />
+                  </Grid>
+                  <Grid item xs={12} sm={4}>
+                    <TextField
+                      fullWidth
+                      label="Выбранная Y"
+                      value={formik.values.toY}
+                      InputProps={{ readOnly: true }}
+                    />
+                  </Grid>
+                  <Grid item xs={12} sm={4}>
+                    <TextField
+                      fullWidth
+                      label="Выбранное название"
+                      value={formik.values.toName}
+                      InputProps={{ readOnly: true }}
+                    />
+                  </Grid>
                 </Grid>
-                <Grid item xs={12} sm={4}>
-                  <TextField 
-                    fullWidth 
-                    name="toY" 
-                    label="Y координата" 
-                    type="number" 
-                    value={formik.values.toY} 
-                    onChange={formik.handleChange}
-                    error={formik.touched.toY && !!formik.errors.toY}
-                    helperText={formik.touched.toY && formik.errors.toY}
-                  />
+              ) : (
+                <Grid container spacing={2}>
+                  <Grid item xs={12} sm={4}>
+                    <TextField
+                      fullWidth
+                      name="toX"
+                      label="X координата"
+                      type="number"
+                      value={formik.values.toX}
+                      onChange={formik.handleChange}
+                      error={formik.touched.toX && !!formik.errors.toX}
+                      helperText={formik.touched.toX && formik.errors.toX}
+                    />
+                  </Grid>
+                  <Grid item xs={12} sm={4}>
+                    <TextField
+                      fullWidth
+                      name="toY"
+                      label="Y координата"
+                      type="number"
+                      value={formik.values.toY}
+                      onChange={formik.handleChange}
+                      error={formik.touched.toY && !!formik.errors.toY}
+                      helperText={formik.touched.toY && formik.errors.toY}
+                    />
+                  </Grid>
+                  <Grid item xs={12} sm={4}>
+                    <TextField
+                      fullWidth
+                      name="toName"
+                      label="Название (опционально)"
+                      placeholder="Например: Вершина горы"
+                      value={formik.values.toName}
+                      onChange={formik.handleChange}
+                    />
+                  </Grid>
                 </Grid>
-                <Grid item xs={12} sm={4}>
-                  <TextField 
-                    fullWidth 
-                    name="toName" 
-                    label="Название (опционально)" 
-                    placeholder="Например: Вершина горы"
-                    value={formik.values.toName} 
-                    onChange={formik.handleChange}
-                  />
-                </Grid>
-              </Grid>
+              )}
             </AccordionDetails>
           </Accordion>
 

@@ -3,3 +3,5 @@ databaseChangeLog:
       file: db/changelogs/001-initial-schema.yaml
   - include:
       file: db/changelogs/002-functions.yaml
+  - include:
+      file: db/changelogs/003-refactor-to-entities.yaml

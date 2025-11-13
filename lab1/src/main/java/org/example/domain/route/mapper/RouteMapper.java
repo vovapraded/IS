@@ -1,7 +1,9 @@
-package org.example.mapper;
+package org.example.domain.route.mapper;
 
-import org.example.dto.*;
-import org.example.entity.Route;
+import org.example.domain.route.dto.*;
+import org.example.domain.route.entity.Route;
+import org.example.domain.coordinates.mapper.CoordinatesMapper;
+import org.example.domain.location.mapper.LocationMapper;
 
 public class RouteMapper {
 
@@ -51,6 +53,7 @@ public class RouteMapper {
         r.setRating(dto.rating());
         return r;
     }
+    
     public static void updateEntityFromDto(Route entity, RouteUpdateDto dto) {
         if (entity == null || dto == null) {
             throw new IllegalArgumentException("Entity and DTO cannot be null");

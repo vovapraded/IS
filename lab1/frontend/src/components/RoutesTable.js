@@ -1,8 +1,9 @@
 import React, { useState } from "react";
 import {
   Table, TableHead, TableRow, TableCell, TableBody, IconButton,
-  TextField, Box, Pagination, Paper, TableContainer, 
-  Typography, Chip, Grid, InputAdornment
+  TextField, Box, Pagination, Paper, TableContainer,
+  Typography, Chip, Grid, InputAdornment, Dialog, DialogTitle,
+  DialogContent, DialogActions, Button, Autocomplete, Alert
 } from "@mui/material";
 import EditIcon from "@mui/icons-material/Edit";
 import DeleteIcon from "@mui/icons-material/Delete";
@@ -10,6 +11,7 @@ import SearchIcon from "@mui/icons-material/Search";
 import ClearIcon from "@mui/icons-material/Clear";
 import ArrowUpwardIcon from "@mui/icons-material/ArrowUpward";
 import ArrowDownwardIcon from "@mui/icons-material/ArrowDownward";
+import api from "../api";
 
 function RoutesTable({
   routes,
@@ -26,6 +28,12 @@ function RoutesTable({
   onDelete
 }) {
   const [localFilter, setLocalFilter] = useState(filterName || "");
+  const [deleteDialog, setDeleteDialog] = useState({ open: false, route: null, message: "" });
+  const [rebindDialog, setRebindDialog] = useState({ open: false, route: null, dependencyInfo: null });
+  const [availableRoutes, setAvailableRoutes] = useState([]);
+  const [selectedTargetRoute, setSelectedTargetRoute] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
 
   const handleFilterSubmit = (e) => {
     e.preventDefault();
@@ -47,9 +55,78 @@ function RoutesTable({
     return sortDirection === 'asc' ? <ArrowUpwardIcon fontSize="small" /> : <ArrowDownwardIcon fontSize="small" />;
   };
 
+  const handleDeleteClick = async (route) => {
+    setLoading(true);
+    setError(null);
+    
+    try {
+      // Проверяем зависимости перед удалением
+      const dependenciesResponse = await api.get(`/routes/${route.id}/check-dependencies`);
+      const dependencyInfo = dependenciesResponse.data;
+      
+      if (dependencyInfo.hasSharedResources) {
+        // Есть связанные объекты - показываем диалог выбора целевого маршрута
+        setRebindDialog({ open: true, route, dependencyInfo });
+        setAvailableRoutes(dependencyInfo.alternativeRoutes || []);
+      } else {
+        // Нет связанных объектов - показываем простой диалог подтверждения
+        const message = `Маршрут "${route.name}" можно безопасно удалить. Его координаты и локации не используются другими маршрутами.`;
+        setDeleteDialog({ open: true, route, message });
+      }
+    } catch (err) {
+      console.error("Ошибка проверки зависимостей:", err);
+      setError("Не удалось проверить зависимости маршрута");
+      // В случае ошибки показываем простой диалог
+      setDeleteDialog({ open: true, route });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const confirmDelete = async () => {
+    if (!deleteDialog.route) return;
+    
+    try {
+      await onDelete(deleteDialog.route.id);
+      setDeleteDialog({ open: false, route: null });
+    } catch (err) {
+      console.error("Ошибка удаления:", err);
+    }
+  };
+
+  const confirmDeleteWithRebind = async () => {
+    if (!rebindDialog.route || !selectedTargetRoute) return;
+    
+    setLoading(true);
+    try {
+      await api.delete(`/routes/${rebindDialog.route.id}?targetRouteId=${selectedTargetRoute.id}`);
+      setRebindDialog({ open: false, route: null });
+      setSelectedTargetRoute(null);
+      // Перезагружаем данные через родительский компонент
+      window.location.reload();
+    } catch (err) {
+      console.error("Ошибка удаления с перепривязкой:", err);
+      setError("Не удалось удалить маршрут с перепривязкой");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const closeDialogs = () => {
+    setDeleteDialog({ open: false, route: null });
+    setRebindDialog({ open: false, route: null });
+    setSelectedTargetRoute(null);
+    setError(null);
+  };
+
   return (
     <Paper elevation={3} sx={{ mt: 3 }}>
       <Box sx={{ p: 2 }}>
+        {error && (
+          <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError(null)}>
+            {error}
+          </Alert>
+        )}
         <Grid container alignItems="center" justifyContent="space-between" sx={{ mb: 2 }}>
           <Grid item>
             <Typography variant="h6" component="h2">
@@ -203,19 +280,20 @@ function RoutesTable({
                   </TableCell>
                   <TableCell>
                     <Box sx={{ display: 'flex', gap: 1 }}>
-                      <IconButton 
-                        color="primary" 
+                      <IconButton
+                        color="primary"
                         onClick={() => onEdit(route)}
                         size="small"
                         title="Редактировать"
                       >
                         <EditIcon fontSize="small" />
                       </IconButton>
-                      <IconButton 
-                        color="error" 
-                        onClick={() => onDelete(route.id)}
+                      <IconButton
+                        color="error"
+                        onClick={() => handleDeleteClick(route)}
                         size="small"
                         title="Удалить"
+                        disabled={loading}
                       >
                         <DeleteIcon fontSize="small" />
                       </IconButton>
@@ -241,6 +319,105 @@ function RoutesTable({
           />
         </Box>
       )}
+
+      {/* Диалог простого удаления */}
+      <Dialog open={deleteDialog.open} onClose={closeDialogs}>
+        <DialogTitle>Подтверждение удаления</DialogTitle>
+        <DialogContent>
+          <Typography>
+            Вы уверены, что хотите удалить маршрут "{deleteDialog.route?.name}"?
+          </Typography>
+          {deleteDialog.message && (
+            <Typography variant="body2" color="success.main" sx={{ mt: 1, mb: 1 }}>
+              {deleteDialog.message}
+            </Typography>
+          )}
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+            Это действие нельзя отменить.
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={closeDialogs}>Отмена</Button>
+          <Button onClick={confirmDelete} color="error" variant="contained">
+            Удалить
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Диалог удаления с перепривязкой */}
+      <Dialog open={rebindDialog.open} onClose={closeDialogs} maxWidth="sm" fullWidth>
+        <DialogTitle>Найдены связанные объекты</DialogTitle>
+        <DialogContent>
+          {rebindDialog.dependencyInfo && (() => {
+            const { dependencyInfo } = rebindDialog;
+            const sharedInfo = [];
+            if (dependencyInfo.coordinatesUsageCount > 0) {
+              sharedInfo.push(`координаты (используются в ${dependencyInfo.coordinatesUsageCount + 1} маршрутах)`);
+            }
+            if (dependencyInfo.fromLocationUsageCount > 0) {
+              sharedInfo.push(`локация "откуда" (используется в ${dependencyInfo.fromLocationUsageCount + 1} маршрутах)`);
+            }
+            if (dependencyInfo.toLocationUsageCount > 0) {
+              sharedInfo.push(`локация "куда" (используется в ${dependencyInfo.toLocationUsageCount + 1} маршрутах)`);
+            }
+            
+            const message = `Маршрут "${rebindDialog.route?.name}" использует ${sharedInfo.join(', ')}.`;
+            return (
+              <Typography sx={{ mb: 2 }}>
+                {message}
+              </Typography>
+            );
+          })()}
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+            Система автоматически перепривяжет эти ресурсы к выбранному маршруту:
+          </Typography>
+
+          {error && (
+            <Alert severity="error" sx={{ mb: 2 }}>
+              {error}
+            </Alert>
+          )}
+
+          <Autocomplete
+            options={availableRoutes}
+            getOptionLabel={(option) => `${option.id}: ${option.name}`}
+            value={selectedTargetRoute}
+            onChange={(event, newValue) => setSelectedTargetRoute(newValue)}
+            loading={loading}
+            renderInput={(params) => (
+              <TextField
+                {...params}
+                label="Целевой маршрут"
+                placeholder="Выберите маршрут для перепривязки..."
+                required
+              />
+            )}
+            renderOption={(props, option) => (
+              <Box component="li" {...props}>
+                <Box>
+                  <Typography variant="body1">
+                    {option.id}: {option.name}
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    От ({option.from.x}, {option.from.y}) до ({option.to.x}, {option.to.y})
+                  </Typography>
+                </Box>
+              </Box>
+            )}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={closeDialogs}>Отмена</Button>
+          <Button
+            onClick={confirmDeleteWithRebind}
+            color="warning"
+            variant="contained"
+            disabled={!selectedTargetRoute || loading}
+          >
+            Удалить с перепривязкой
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Paper>
   );
 }

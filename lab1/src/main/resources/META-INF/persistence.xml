@@ -6,9 +6,9 @@
     <persistence-unit name="RoutesPU" transaction-type="JTA">
         <jta-data-source>java:/jdbc/RoutesDS</jta-data-source>
 
-        <class>org.example.entity.Route</class>
-        <class>org.example.entity.Coordinates</class>
-        <class>org.example.entity.Location</class>
+        <class>org.example.domain.route.entity.Route</class>
+        <class>org.example.domain.coordinates.entity.Coordinates</class>
+        <class>org.example.domain.location.entity.Location</class>
 
         <properties>
             <property name="hibernate.dialect" value="org.hibernate.dialect.PostgreSQLDialect"/>
