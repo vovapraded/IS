@@ -1,0 +1,336 @@
+рон/* Global styles for Route Management Application */
+
+* {
+  box-sizing: border-box;
+}
+
+.App {
+  text-align: left;
+}
+
+/* Custom theme colors */
+:root {
+  --primary-color: #1976d2;
+  --primary-light: #42a5f5;
+  --primary-dark: #1565c0;
+  --secondary-color: #dc004e;
+  --success-color: #2e7d32;
+  --warning-color: #ed6c02;
+  --error-color: #d32f2f;
+  --background-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  --card-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+  --hover-shadow: 0 8px 30px rgba(0, 0, 0, 0.12);
+}
+
+/* Background gradient for body */
+body {
+  margin: 0;
+  padding: 0;
+  font-family: 'Roboto', 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+  background: var(--background-gradient);
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Container improvements */
+.MuiContainer-root {
+  background: rgba(255, 255, 255, 0.95);
+  border-radius: 16px;
+  backdrop-filter: blur(10px);
+  box-shadow: var(--card-shadow);
+  margin-top: 20px;
+  margin-bottom: 20px;
+}
+
+/* Paper component enhancements */
+.MuiPaper-root {
+  border-radius: 12px !important;
+  box-shadow: var(--card-shadow) !important;
+  transition: box-shadow 0.3s ease-in-out !important;
+}
+
+.MuiPaper-root:hover {
+  box-shadow: var(--hover-shadow) !important;
+}
+
+/* Table enhancements */
+.MuiTableContainer-root {
+  border-radius: 8px !important;
+  overflow: hidden;
+}
+
+.MuiTable-root {
+  background: linear-gradient(145deg, #ffffff 0%, #f8f9fa 100%);
+}
+
+.MuiTableHead-root .MuiTableRow-root {
+  background: linear-gradient(145deg, #f5f7fa 0%, #c3cfe2 100%);
+}
+
+.MuiTableHead-root .MuiTableCell-root {
+  font-weight: 600 !important;
+  text-transform: uppercase;
+  font-size: 0.875rem;
+  letter-spacing: 0.5px;
+  border-bottom: 2px solid var(--primary-color) !important;
+}
+
+.MuiTableBody-root .MuiTableRow-root:hover {
+  background-color: rgba(25, 118, 210, 0.04) !important;
+  transform: scale(1.001);
+  transition: all 0.2s ease-in-out;
+}
+
+/* Button enhancements */
+.MuiButton-root {
+  border-radius: 8px !important;
+  text-transform: none !important;
+  font-weight: 500 !important;
+  transition: all 0.3s ease !important;
+}
+
+.MuiButton-contained {
+  background: linear-gradient(45deg, var(--primary-color) 30%, var(--primary-light) 90%) !important;
+  box-shadow: 0 3px 5px 2px rgba(25, 118, 210, 0.3) !important;
+}
+
+.MuiButton-contained:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(25, 118, 210, 0.4) !important;
+}
+
+.MuiButton-outlined {
+  border: 2px solid var(--primary-color) !important;
+}
+
+.MuiButton-outlined:hover {
+  background-color: rgba(25, 118, 210, 0.04) !important;
+  transform: translateY(-1px);
+}
+
+/* TextField enhancements */
+.MuiTextField-root {
+  margin-bottom: 8px !important;
+}
+
+.MuiOutlinedInput-root {
+  border-radius: 8px !important;
+}
+
+.MuiOutlinedInput-root:hover .MuiOutlinedInput-notchedOutline {
+  border-color: var(--primary-light) !important;
+}
+
+.MuiOutlinedInput-root.Mui-focused .MuiOutlinedInput-notchedOutline {
+  border-width: 2px !important;
+  border-color: var(--primary-color) !important;
+}
+
+/* Chip enhancements */
+.MuiChip-root {
+  border-radius: 6px !important;
+  font-weight: 500 !important;
+  transition: all 0.3s ease !important;
+}
+
+.MuiChip-colorSuccess {
+  background: linear-gradient(45deg, #4caf50 30%, #81c784 90%) !important;
+  color: white !important;
+}
+
+.MuiChip-colorWarning {
+  background: linear-gradient(45deg, #ff9800 30%, #ffb74d 90%) !important;
+  color: white !important;
+}
+
+.MuiChip-colorError {
+  background: linear-gradient(45deg, #f44336 30%, #e57373 90%) !important;
+  color: white !important;
+}
+
+/* Alert enhancements */
+.MuiAlert-root {
+  border-radius: 8px !important;
+  border-left: 4px solid !important;
+}
+
+.MuiAlert-standardError {
+  border-left-color: var(--error-color) !important;
+}
+
+.MuiAlert-standardWarning {
+  border-left-color: var(--warning-color) !important;
+}
+
+.MuiAlert-standardSuccess {
+  border-left-color: var(--success-color) !important;
+}
+
+/* Pagination enhancements */
+.MuiPagination-root .MuiPaginationItem-root {
+  border-radius: 8px !important;
+  transition: all 0.3s ease !important;
+}
+
+.MuiPagination-root .MuiPaginationItem-root:hover {
+  transform: scale(1.1);
+  background-color: rgba(25, 118, 210, 0.08) !important;
+}
+
+.MuiPagination-root .Mui-selected {
+  background: linear-gradient(45deg, var(--primary-color) 30%, var(--primary-light) 90%) !important;
+  color: white !important;
+}
+
+/* Accordion enhancements */
+.MuiAccordion-root {
+  border-radius: 8px !important;
+  margin: 8px 0 !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1) !important;
+}
+
+.MuiAccordion-root:before {
+  display: none;
+}
+
+.MuiAccordionSummary-root {
+  background: linear-gradient(145deg, #f8f9fa 0%, #e9ecef 100%) !important;
+  border-radius: 8px 8px 0 0 !important;
+}
+
+.MuiAccordionSummary-root:hover {
+  background: linear-gradient(145deg, #e9ecef 0%, #dee2e6 100%) !important;
+}
+
+/* Card enhancements */
+.MuiCard-root {
+  border-radius: 12px !important;
+  transition: all 0.3s ease !important;
+  border: 1px solid rgba(0, 0, 0, 0.08) !important;
+}
+
+.MuiCard-root:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15) !important;
+}
+
+/* Icon button enhancements */
+.MuiIconButton-root {
+  transition: all 0.3s ease !important;
+}
+
+.MuiIconButton-root:hover {
+  transform: scale(1.1);
+}
+
+.MuiIconButton-colorPrimary:hover {
+  background-color: rgba(25, 118, 210, 0.08) !important;
+}
+
+.MuiIconButton-colorError:hover {
+  background-color: rgba(211, 47, 47, 0.08) !important;
+}
+
+/* Typography enhancements */
+.MuiTypography-h3 {
+  background: linear-gradient(45deg, var(--primary-color), var(--primary-light)) !important;
+  -webkit-background-clip: text !important;
+  -webkit-text-fill-color: transparent !important;
+  background-clip: text !important;
+  font-weight: 700 !important;
+}
+
+.MuiTypography-h5 {
+  color: var(--primary-color) !important;
+  font-weight: 600 !important;
+}
+
+.MuiTypography-h6 {
+  font-weight: 500 !important;
+}
+
+/* Loading animation */
+@keyframes pulse {
+  0% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+
+.loading {
+  animation: pulse 2s infinite;
+}
+
+/* Responsive design improvements */
+@media (max-width: 768px) {
+  .MuiContainer-root {
+    margin: 10px;
+    padding: 16px !important;
+    border-radius: 12px;
+  }
+  
+  .MuiTable-root {
+    font-size: 0.875rem;
+  }
+  
+  .MuiTableCell-root {
+    padding: 8px !important;
+  }
+  
+  .MuiButton-root {
+    font-size: 0.875rem !important;
+  }
+}
+
+@media (max-width: 480px) {
+  .MuiTypography-h3 {
+    font-size: 1.8rem !important;
+  }
+  
+  .MuiTypography-h5 {
+    font-size: 1.2rem !important;
+  }
+  
+  .MuiContainer-root {
+    margin: 5px;
+    padding: 12px !important;
+  }
+}
+
+/* Smooth scrolling */
+html {
+  scroll-behavior: smooth;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: linear-gradient(45deg, var(--primary-color), var(--primary-light));
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--primary-dark);
+}
+
+/* Focus styles for accessibility */
+.MuiButton-root:focus,
+.MuiTextField-root:focus,
+.MuiIconButton-root:focus {
+  outline: 2px solid var(--primary-color);
+  outline-offset: 2px;
+}

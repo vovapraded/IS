@@ -1,0 +1,27 @@
+databaseChangeLog:
+  - changeSet:
+      id: 001-create-routes-table
+      author: system
+      comment: Create routes table with all constraints
+      changes:
+        - sql:
+            sql: |
+              CREATE TABLE routes (
+                  id SERIAL PRIMARY KEY CHECK (id > 0),
+                  name VARCHAR NOT NULL CHECK (name != '' AND LENGTH(TRIM(name)) > 0),
+                  x FLOAT,
+                  y DOUBLE PRECISION NOT NULL CHECK (y <= 807),
+                  from_x DOUBLE PRECISION NOT NULL,
+                  from_y DOUBLE PRECISION NOT NULL,
+                  from_name VARCHAR,
+                  to_x DOUBLE PRECISION NOT NULL,
+                  to_y DOUBLE PRECISION NOT NULL,
+                  to_name VARCHAR,
+                  distance BIGINT NOT NULL CHECK(distance > 1),
+                  rating BIGINT NOT NULL CHECK(rating > 0),
+                  creation_date TIMESTAMPTZ NOT NULL DEFAULT NOW()
+              );
+
+      rollback:
+        - sql:
+            sql: DROP TABLE IF EXISTS routes;

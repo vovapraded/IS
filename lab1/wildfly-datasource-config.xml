@@ -1,0 +1,33 @@
+<!-- Добавьте этот блок в standalone.xml в секцию datasources -->
+
+<!-- 1. Сначала добавьте драйвер в секцию <drivers>: -->
+<driver name="postgresql" module="org.postgresql">
+    <xa-datasource-class>org.postgresql.xa.PGXADataSource</xa-datasource-class>
+</driver>
+
+<!-- 2. Затем добавьте DataSource в секцию <datasources>: -->
+<datasource jndi-name="java:/jdbc/RoutesDS" pool-name="RoutesDS" enabled="true" use-java-context="true">
+    <connection-url>jdbc:postgresql://localhost:5432/database</connection-url>
+    <driver>postgresql</driver>
+    <pool>
+        <min-pool-size>5</min-pool-size>
+        <max-pool-size>20</max-pool-size>
+        <prefill>true</prefill>
+    </pool>
+    <security>
+        <user-name>admin</user-name>
+        <password>admin</password>
+    </security>
+    <validation>
+        <validate-on-match>true</validate-on-match>
+        <background-validation>false</background-validation>
+    </validation>
+    <timeout>
+        <idle-timeout-minutes>1</idle-timeout-minutes>
+        <query-timeout>600</query-timeout>
+    </timeout>
+    <statement>
+        <prepared-statement-cache-size>32</prepared-statement-cache-size>
+        <share-prepared-statements>true</share-prepared-statements>
+    </statement>
+</datasource>

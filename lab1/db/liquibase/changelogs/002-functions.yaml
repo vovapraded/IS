@@ -1,0 +1,65 @@
+databaseChangeLog:
+  - changeSet:
+      id: 002-create-get-route-with-max-name-function
+      author: system
+      comment: Create function to get route with maximum name
+      changes:
+        - sql:
+            sql: "CREATE OR REPLACE FUNCTION get_route_with_max_name() RETURNS TABLE(id INTEGER, name VARCHAR, x FLOAT, y DOUBLE PRECISION, from_x DOUBLE PRECISION, from_y DOUBLE PRECISION, from_name VARCHAR, to_x DOUBLE PRECISION, to_y DOUBLE PRECISION, to_name VARCHAR, distance BIGINT, rating BIGINT, creation_date TIMESTAMPTZ) AS $$ BEGIN RETURN QUERY SELECT r.id, r.name, r.x, r.y, r.from_x, r.from_y, r.from_name, r.to_x, r.to_y, r.to_name, r.distance, r.rating, r.creation_date::TIMESTAMPTZ FROM routes r WHERE r.name = (SELECT MAX(routes.name) FROM routes) ORDER BY r.id LIMIT 1; END; $$ LANGUAGE plpgsql;"
+            splitStatements: false
+            endDelimiter: ";"
+      rollback:
+        - sql:
+            sql: DROP FUNCTION IF EXISTS get_route_with_max_name();
+
+  - changeSet:
+      id: 003-create-count-routes-with-rating-less-than-function
+      author: system
+      comment: Create function to count routes with rating less than threshold
+      changes:
+        - sql:
+            sql: "CREATE OR REPLACE FUNCTION count_routes_with_rating_less_than(rating_threshold BIGINT) RETURNS BIGINT AS $$ BEGIN RETURN (SELECT COUNT(*) FROM routes WHERE rating < rating_threshold); END; $$ LANGUAGE plpgsql;"
+            splitStatements: false
+            endDelimiter: ";"
+      rollback:
+        - sql:
+            sql: DROP FUNCTION IF EXISTS count_routes_with_rating_less_than(BIGINT);
+
+  - changeSet:
+      id: 004-create-get-routes-with-rating-greater-than-function
+      author: system
+      comment: Create function to get routes with rating greater than threshold
+      changes:
+        - sql:
+            sql: "CREATE OR REPLACE FUNCTION get_routes_with_rating_greater_than(rating_threshold BIGINT) RETURNS TABLE(id INTEGER, name VARCHAR, x FLOAT, y DOUBLE PRECISION, from_x DOUBLE PRECISION, from_y DOUBLE PRECISION, from_name VARCHAR, to_x DOUBLE PRECISION, to_y DOUBLE PRECISION, to_name VARCHAR, distance BIGINT, rating BIGINT, creation_date TIMESTAMPTZ) AS $$ BEGIN RETURN QUERY SELECT r.id, r.name, r.x, r.y, r.from_x, r.from_y, r.from_name, r.to_x, r.to_y, r.to_name, r.distance, r.rating, r.creation_date::TIMESTAMPTZ FROM routes r WHERE r.rating > rating_threshold ORDER BY r.rating DESC; END; $$ LANGUAGE plpgsql;"
+            splitStatements: false
+            endDelimiter: ";"
+      rollback:
+        - sql:
+            sql: DROP FUNCTION IF EXISTS get_routes_with_rating_greater_than(BIGINT);
+
+  - changeSet:
+      id: 005-create-find-routes-between-locations-function
+      author: system
+      comment: Create function to find routes between locations with sorting
+      changes:
+        - sql:
+            sql: "CREATE OR REPLACE FUNCTION find_routes_between_locations(from_location_name VARCHAR DEFAULT NULL, to_location_name VARCHAR DEFAULT NULL, sort_by VARCHAR DEFAULT 'name') RETURNS TABLE(id INTEGER, name VARCHAR, x FLOAT, y DOUBLE PRECISION, from_x DOUBLE PRECISION, from_y DOUBLE PRECISION, from_name VARCHAR, to_x DOUBLE PRECISION, to_y DOUBLE PRECISION, to_name VARCHAR, distance BIGINT, rating BIGINT, creation_date TIMESTAMPTZ) AS $$ BEGIN IF sort_by = 'distance' THEN RETURN QUERY SELECT r.id, r.name, r.x, r.y, r.from_x, r.from_y, r.from_name, r.to_x, r.to_y, r.to_name, r.distance, r.rating, r.creation_date::TIMESTAMPTZ FROM routes r WHERE (from_location_name IS NULL OR r.from_name = from_location_name) AND (to_location_name IS NULL OR r.to_name = to_location_name) ORDER BY r.distance; ELSIF sort_by = 'rating' THEN RETURN QUERY SELECT r.id, r.name, r.x, r.y, r.from_x, r.from_y, r.from_name, r.to_x, r.to_y, r.to_name, r.distance, r.rating, r.creation_date::TIMESTAMPTZ FROM routes r WHERE (from_location_name IS NULL OR r.from_name = from_location_name) AND (to_location_name IS NULL OR r.to_name = to_location_name) ORDER BY r.rating DESC; ELSIF sort_by = 'creation_date' THEN RETURN QUERY SELECT r.id, r.name, r.x, r.y, r.from_x, r.from_y, r.from_name, r.to_x, r.to_y, r.to_name, r.distance, r.rating, r.creation_date::TIMESTAMPTZ FROM routes r WHERE (from_location_name IS NULL OR r.from_name = from_location_name) AND (to_location_name IS NULL OR r.to_name = to_location_name) ORDER BY r.creation_date DESC; ELSE RETURN QUERY SELECT r.id, r.name, r.x, r.y, r.from_x, r.from_y, r.from_name, r.to_x, r.to_y, r.to_name, r.distance, r.rating, r.creation_date::TIMESTAMPTZ FROM routes r WHERE (from_location_name IS NULL OR r.from_name = from_location_name) AND (to_location_name IS NULL OR r.to_name = to_location_name) ORDER BY r.name; END IF; END; $$ LANGUAGE plpgsql;"
+            splitStatements: false
+            endDelimiter: ";"
+      rollback:
+        - sql:
+            sql: DROP FUNCTION IF EXISTS find_routes_between_locations(VARCHAR, VARCHAR, VARCHAR);
+
+  - changeSet:
+      id: 006-create-add-route-between-locations-function
+      author: system
+      comment: Create function to add new route between locations
+      changes:
+        - sql:
+            sql: "CREATE OR REPLACE FUNCTION add_route_between_locations(route_name VARCHAR, coord_x FLOAT, coord_y DOUBLE PRECISION, from_loc_x DOUBLE PRECISION, from_loc_y DOUBLE PRECISION, from_loc_name VARCHAR, to_loc_x DOUBLE PRECISION, to_loc_y DOUBLE PRECISION, to_loc_name VARCHAR, route_distance BIGINT, route_rating BIGINT) RETURNS INTEGER AS $$ DECLARE new_id INTEGER; BEGIN INSERT INTO routes (name, x, y, from_x, from_y, from_name, to_x, to_y, to_name, distance, rating) VALUES (route_name, coord_x, coord_y, from_loc_x, from_loc_y, from_loc_name, to_loc_x, to_loc_y, to_loc_name, route_distance, route_rating) RETURNING id INTO new_id; RETURN new_id; END; $$ LANGUAGE plpgsql;"
+            splitStatements: false
+            endDelimiter: ";"
+      rollback:
+        - sql:
+            sql: DROP FUNCTION IF EXISTS add_route_between_locations(VARCHAR, FLOAT, DOUBLE PRECISION, DOUBLE PRECISION, DOUBLE PRECISION, VARCHAR, DOUBLE PRECISION, DOUBLE PRECISION, VARCHAR, BIGINT, BIGINT);

@@ -1,0 +1,39 @@
+services:
+  db:
+    image: postgres:16
+    container_name: postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: admin       # создаём пользователя
+      POSTGRES_PASSWORD: admin   # его пароль
+      POSTGRES_DB: database      # базу, которая сразу создаётся
+    ports:
+      - "5432:5432"              # пробрасываем порт контейнера на хост
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      # Закомментировали старую инициализацию
+      # - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U admin -d database"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  liquibase:
+    image: liquibase/liquibase:4.25
+    container_name: liquibase
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ./db/liquibase:/liquibase/db
+    working_dir: /liquibase
+    environment:
+      LIQUIBASE_COMMAND_USERNAME: admin
+      LIQUIBASE_COMMAND_PASSWORD: admin
+      LIQUIBASE_COMMAND_URL: jdbc:postgresql://db:5432/database
+    command: ["liquibase", "update", "--changelog-file=db/db.changelog-master.yaml"]
+    restart: "no"  # Запускается только один раз для миграции
+
+volumes:
+  postgres_data:
