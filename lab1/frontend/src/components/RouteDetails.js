@@ -143,6 +143,9 @@ function RouteDetails() {
                       <Typography sx={{ fontFamily: 'monospace', fontSize: '1.1rem' }}>
                         Y: {route.coordinates.y}
                       </Typography>
+                      <Typography sx={{ mt: 1 }}>
+                        <strong>Владелец:</strong> Маршрут #{route.coordinates.ownerRouteId}
+                      </Typography>
                     </Box>
                   </CardContent>
                 </Card>

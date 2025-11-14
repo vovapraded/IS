@@ -6,6 +6,7 @@ import org.example.domain.location.dto.LocationDto;
 import org.example.domain.location.entity.Location;
 import org.example.domain.location.mapper.LocationMapper;
 import org.example.domain.location.repository.LocationRepositoryMB;
+import org.example.domain.route.entity.Route;
 
 import java.util.List;
 import java.util.Optional;
@@ -66,6 +67,37 @@ public class LocationServiceMB {
         
         Location saved = locationRepository.save(newLocation);
         return LocationMapper.toDto(saved);
+    }
+
+    public LocationDto findOrCreateWithOwner(LocationDto dto, Route ownerRoute) {
+        // Проверяем, существует ли уже такая локация
+        Optional<Location> existing = locationRepository.findByXAndYAndName(dto.x(), dto.y(), dto.name());
+        if (existing.isPresent()) {
+            return LocationMapper.toDto(existing.get());
+        }
+        
+        // Создаем новую локацию с владельцем
+        Location newLocation = Location.builder()
+                .x(dto.x())
+                .y(dto.y())
+                .name(dto.name())
+                .ownerRoute(ownerRoute)
+                .build();
+        
+        Location saved = locationRepository.save(newLocation);
+        return LocationMapper.toDto(saved);
+    }
+
+    public void transferOwnership(Integer locationId, Route newOwner) {
+        Location location = locationRepository.findById(locationId);
+        if (location != null) {
+            location.setOwnerRoute(newOwner);
+            locationRepository.save(location);
+        }
+    }
+    
+    public void updateOwner(Integer locationId, Route ownerRoute) {
+        transferOwnership(locationId, ownerRoute);
     }
 
     public long getUsageCount(Integer locationId) {

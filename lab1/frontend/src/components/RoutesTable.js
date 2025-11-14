@@ -30,8 +30,12 @@ function RoutesTable({
   const [localFilter, setLocalFilter] = useState(filterName || "");
   const [deleteDialog, setDeleteDialog] = useState({ open: false, route: null, message: "" });
   const [rebindDialog, setRebindDialog] = useState({ open: false, route: null, dependencyInfo: null });
-  const [availableRoutes, setAvailableRoutes] = useState([]);
-  const [selectedTargetRoute, setSelectedTargetRoute] = useState(null);
+  const [coordinatesCandidates, setCoordinatesCandidates] = useState([]);
+  const [fromLocationCandidates, setFromLocationCandidates] = useState([]);
+  const [toLocationCandidates, setToLocationCandidates] = useState([]);
+  const [selectedCoordinatesTarget, setSelectedCoordinatesTarget] = useState(null);
+  const [selectedFromLocationTarget, setSelectedFromLocationTarget] = useState(null);
+  const [selectedToLocationTarget, setSelectedToLocationTarget] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
@@ -65,9 +69,11 @@ function RoutesTable({
       const dependencyInfo = dependenciesResponse.data;
       
       if (dependencyInfo.hasSharedResources) {
-        // Есть связанные объекты - показываем диалог выбора целевого маршрута
+        // Есть связанные объекты - показываем диалог выбора целевых маршрутов
         setRebindDialog({ open: true, route, dependencyInfo });
-        setAvailableRoutes(dependencyInfo.alternativeRoutes || []);
+        setCoordinatesCandidates(dependencyInfo.coordinatesCandidates || []);
+        setFromLocationCandidates(dependencyInfo.fromLocationCandidates || []);
+        setToLocationCandidates(dependencyInfo.toLocationCandidates || []);
       } else {
         // Нет связанных объектов - показываем простой диалог подтверждения
         const message = `Маршрут "${route.name}" можно безопасно удалить. Его координаты и локации не используются другими маршрутами.`;
@@ -95,13 +101,29 @@ function RoutesTable({
   };
 
   const confirmDeleteWithRebind = async () => {
-    if (!rebindDialog.route || !selectedTargetRoute) return;
+    if (!rebindDialog.route) return;
+    
+    // Проверяем, что для всех ресурсов, которые нужно перепривязать, выбраны целевые маршруты
+    const { dependencyInfo } = rebindDialog;
+    if ((dependencyInfo.coordinatesUsageCount > 0 && !selectedCoordinatesTarget) ||
+        (dependencyInfo.fromLocationUsageCount > 0 && !selectedFromLocationTarget) ||
+        (dependencyInfo.toLocationUsageCount > 0 && !selectedToLocationTarget)) {
+      setError("Выберите целевые маршруты для всех ресурсов, которые нужно перепривязать");
+      return;
+    }
     
     setLoading(true);
     try {
-      await api.delete(`/routes/${rebindDialog.route.id}?targetRouteId=${selectedTargetRoute.id}`);
-      setRebindDialog({ open: false, route: null });
-      setSelectedTargetRoute(null);
+      const params = new URLSearchParams();
+      if (selectedCoordinatesTarget) params.append('coordinatesTargetRouteId', selectedCoordinatesTarget.id);
+      if (selectedFromLocationTarget) params.append('fromLocationTargetRouteId', selectedFromLocationTarget.id);
+      if (selectedToLocationTarget) params.append('toLocationTargetRouteId', selectedToLocationTarget.id);
+      
+      await api.delete(`/routes/${rebindDialog.route.id}?${params.toString()}`);
+      setRebindDialog({ open: false, route: null, dependencyInfo: null });
+      setSelectedCoordinatesTarget(null);
+      setSelectedFromLocationTarget(null);
+      setSelectedToLocationTarget(null);
       // Перезагружаем данные через родительский компонент
       window.location.reload();
     } catch (err) {
@@ -114,8 +136,10 @@ function RoutesTable({
 
   const closeDialogs = () => {
     setDeleteDialog({ open: false, route: null });
-    setRebindDialog({ open: false, route: null });
-    setSelectedTargetRoute(null);
+    setRebindDialog({ open: false, route: null, dependencyInfo: null });
+    setSelectedCoordinatesTarget(null);
+    setSelectedFromLocationTarget(null);
+    setSelectedToLocationTarget(null);
     setError(null);
   };
 
@@ -352,13 +376,16 @@ function RoutesTable({
             const { dependencyInfo } = rebindDialog;
             const sharedInfo = [];
             if (dependencyInfo.coordinatesUsageCount > 0) {
-              sharedInfo.push(`координаты (используются в ${dependencyInfo.coordinatesUsageCount + 1} маршрутах)`);
+              const count = dependencyInfo.coordinatesUsageCount;
+              sharedInfo.push(`координаты (используются ${count === 1 ? 'ещё 1 маршрутом' : `ещё ${count} маршрутами`})`);
             }
             if (dependencyInfo.fromLocationUsageCount > 0) {
-              sharedInfo.push(`локация "откуда" (используется в ${dependencyInfo.fromLocationUsageCount + 1} маршрутах)`);
+              const count = dependencyInfo.fromLocationUsageCount;
+              sharedInfo.push(`локация "откуда" (используется ${count === 1 ? 'ещё 1 маршрутом' : `ещё ${count} маршрутами`})`);
             }
             if (dependencyInfo.toLocationUsageCount > 0) {
-              sharedInfo.push(`локация "куда" (используется в ${dependencyInfo.toLocationUsageCount + 1} маршрутах)`);
+              const count = dependencyInfo.toLocationUsageCount;
+              sharedInfo.push(`локация "куда" (используется ${count === 1 ? 'ещё 1 маршрутом' : `ещё ${count} маршрутами`})`);
             }
             
             const message = `Маршрут "${rebindDialog.route?.name}" использует ${sharedInfo.join(', ')}.`;
@@ -369,7 +396,7 @@ function RoutesTable({
             );
           })()}
           <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-            Система автоматически перепривяжет эти ресурсы к выбранному маршруту:
+            Выберите целевые маршруты для перепривязки каждого ресурса:
           </Typography>
 
           {error && (
@@ -378,33 +405,110 @@ function RoutesTable({
             </Alert>
           )}
 
-          <Autocomplete
-            options={availableRoutes}
-            getOptionLabel={(option) => `${option.id}: ${option.name}`}
-            value={selectedTargetRoute}
-            onChange={(event, newValue) => setSelectedTargetRoute(newValue)}
-            loading={loading}
-            renderInput={(params) => (
-              <TextField
-                {...params}
-                label="Целевой маршрут"
-                placeholder="Выберите маршрут для перепривязки..."
-                required
+          {rebindDialog.dependencyInfo && rebindDialog.dependencyInfo.coordinatesUsageCount > 0 && (
+            <Box sx={{ mb: 3 }}>
+              <Typography variant="subtitle2" sx={{ mb: 1 }}>
+                Координаты (используются ещё {rebindDialog.dependencyInfo.coordinatesUsageCount} маршрутами):
+              </Typography>
+              <Autocomplete
+                options={coordinatesCandidates}
+                getOptionLabel={(option) => `${option.id}: ${option.name}`}
+                value={selectedCoordinatesTarget}
+                onChange={(event, newValue) => setSelectedCoordinatesTarget(newValue)}
+                loading={loading}
+                renderInput={(params) => (
+                  <TextField
+                    {...params}
+                    label="Целевой маршрут для координат"
+                    placeholder="Выберите маршрут..."
+                    required
+                  />
+                )}
+                renderOption={(props, option) => (
+                  <Box component="li" {...props}>
+                    <Box>
+                      <Typography variant="body1">
+                        {option.id}: {option.name}
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary">
+                        Координаты: ({option.coordinates.x}, {option.coordinates.y})
+                      </Typography>
+                    </Box>
+                  </Box>
+                )}
               />
-            )}
-            renderOption={(props, option) => (
-              <Box component="li" {...props}>
-                <Box>
-                  <Typography variant="body1">
-                    {option.id}: {option.name}
-                  </Typography>
-                  <Typography variant="body2" color="text.secondary">
-                    От ({option.from.x}, {option.from.y}) до ({option.to.x}, {option.to.y})
-                  </Typography>
-                </Box>
-              </Box>
-            )}
-          />
+            </Box>
+          )}
+
+          {rebindDialog.dependencyInfo && rebindDialog.dependencyInfo.fromLocationUsageCount > 0 && (
+            <Box sx={{ mb: 3 }}>
+              <Typography variant="subtitle2" sx={{ mb: 1 }}>
+                Локация "откуда" (используется ещё {rebindDialog.dependencyInfo.fromLocationUsageCount} маршрутами):
+              </Typography>
+              <Autocomplete
+                options={fromLocationCandidates}
+                getOptionLabel={(option) => `${option.id}: ${option.name}`}
+                value={selectedFromLocationTarget}
+                onChange={(event, newValue) => setSelectedFromLocationTarget(newValue)}
+                loading={loading}
+                renderInput={(params) => (
+                  <TextField
+                    {...params}
+                    label="Целевой маршрут для локации 'откуда'"
+                    placeholder="Выберите маршрут..."
+                    required
+                  />
+                )}
+                renderOption={(props, option) => (
+                  <Box component="li" {...props}>
+                    <Box>
+                      <Typography variant="body1">
+                        {option.id}: {option.name}
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary">
+                        От ({option.from.x}, {option.from.y}) до ({option.to.x}, {option.to.y})
+                      </Typography>
+                    </Box>
+                  </Box>
+                )}
+              />
+            </Box>
+          )}
+
+          {rebindDialog.dependencyInfo && rebindDialog.dependencyInfo.toLocationUsageCount > 0 && (
+            <Box sx={{ mb: 3 }}>
+              <Typography variant="subtitle2" sx={{ mb: 1 }}>
+                Локация "куда" (используется ещё {rebindDialog.dependencyInfo.toLocationUsageCount} маршрутами):
+              </Typography>
+              <Autocomplete
+                options={toLocationCandidates}
+                getOptionLabel={(option) => `${option.id}: ${option.name}`}
+                value={selectedToLocationTarget}
+                onChange={(event, newValue) => setSelectedToLocationTarget(newValue)}
+                loading={loading}
+                renderInput={(params) => (
+                  <TextField
+                    {...params}
+                    label="Целевой маршрут для локации 'куда'"
+                    placeholder="Выберите маршрут..."
+                    required
+                  />
+                )}
+                renderOption={(props, option) => (
+                  <Box component="li" {...props}>
+                    <Box>
+                      <Typography variant="body1">
+                        {option.id}: {option.name}
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary">
+                        От ({option.from.x}, {option.from.y}) до ({option.to.x}, {option.to.y})
+                      </Typography>
+                    </Box>
+                  </Box>
+                )}
+              />
+            </Box>
+          )}
         </DialogContent>
         <DialogActions>
           <Button onClick={closeDialogs}>Отмена</Button>
@@ -412,7 +516,7 @@ function RoutesTable({
             onClick={confirmDeleteWithRebind}
             color="warning"
             variant="contained"
-            disabled={!selectedTargetRoute || loading}
+            disabled={loading}
           >
             Удалить с перепривязкой
           </Button>

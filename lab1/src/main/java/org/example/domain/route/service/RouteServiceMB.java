@@ -41,25 +41,28 @@ public class RouteServiceMB {
     public RouteDto createRoute(RouteCreateDto dto) {
         log.info("Creating route {}", dto);
         
-        // Получаем или создаем координаты
-        CoordinatesDto coordsDto = getOrCreateCoordinates(dto.coordinates());
+        // Создаем координаты и локации (owner будет установлен позже)
+        CoordinatesDto coordsDto = coordinatesService.findOrCreate(dto.coordinates());
+        LocationDto fromDto = locationService.findOrCreate(dto.from());
+        LocationDto toDto = locationService.findOrCreate(dto.to());
         
-        // Получаем или создаем локации
-        LocationDto fromDto = getOrCreateLocation(dto.from());
-        LocationDto toDto = getOrCreateLocation(dto.to());
-        
-        // Создаем маршрут с ссылками на существующие сущности
+        // Создаем маршрут с установленными связями
         Route entity = new Route();
         entity.setName(dto.name());
         entity.setDistance(dto.distance());
         entity.setRating(dto.rating());
-        
-        // Получаем Entity объекты из репозиториев
         entity.setCoordinates(coordinatesRepository.findById(coordsDto.id()));
         entity.setFrom(locationRepository.findById(fromDto.id()));
         entity.setTo(locationRepository.findById(toDto.id()));
         
+        // Сохраняем маршрут
         Route saved = routeRepository.save(entity);
+        
+        // Обновляем владельца для координат и локаций
+        coordinatesService.updateOwner(saved.getCoordinates().getId(), saved);
+        locationService.updateOwner(saved.getFrom().getId(), saved);
+        locationService.updateOwner(saved.getTo().getId(), saved);
+        
         return RouteMapper.toDto(saved);
     }
 
@@ -111,31 +114,73 @@ public class RouteServiceMB {
             throw new IllegalArgumentException("Route not found with id: " + id);
         }
 
-        // Проверяем использование координат и локаций по ID, ИСКЛЮЧАЯ текущий маршрут
-        long coordinatesUsageCount = coordinatesService.getUsageCountExcluding(routeToDelete.getCoordinates().getId(), id);
-        long fromLocationUsageCount = locationService.getUsageCountExcluding(routeToDelete.getFrom().getId(), id);
-        long toLocationUsageCount = locationService.getUsageCountExcluding(routeToDelete.getTo().getId(), id);
+        // В новой модели владения проверяем, является ли удаляемый маршрут владельцем
+        boolean isCoordinatesOwner = routeToDelete.getCoordinates().getOwnerRoute() != null &&
+                                    routeToDelete.getCoordinates().getOwnerRoute().getId().equals(id);
+        boolean isFromLocationOwner = routeToDelete.getFrom().getOwnerRoute() != null &&
+                                     routeToDelete.getFrom().getOwnerRoute().getId().equals(id);
+        boolean isToLocationOwner = routeToDelete.getTo().getOwnerRoute() != null &&
+                                   routeToDelete.getTo().getOwnerRoute().getId().equals(id);
+        
+        // Подсчитываем использование только для объектов, которыми владеет удаляемый маршрут
+        long coordinatesUsageCount = isCoordinatesOwner ?
+            coordinatesService.getUsageCountExcluding(routeToDelete.getCoordinates().getId(), id) : 0;
+        long fromLocationUsageCount = isFromLocationOwner ?
+            locationService.getUsageCountExcluding(routeToDelete.getFrom().getId(), id) : 0;
+        long toLocationUsageCount = isToLocationOwner ?
+            locationService.getUsageCountExcluding(routeToDelete.getTo().getId(), id) : 0;
 
-        boolean hasSharedResources = coordinatesUsageCount > 0 || fromLocationUsageCount > 0 || toLocationUsageCount > 0;
+        boolean needsOwnershipTransfer = coordinatesUsageCount > 0 || fromLocationUsageCount > 0 || toLocationUsageCount > 0;
         
         Map<String, Object> result = new HashMap<>();
-        result.put("hasSharedResources", hasSharedResources);
+        result.put("needsOwnershipTransfer", needsOwnershipTransfer);
+        result.put("isCoordinatesOwner", isCoordinatesOwner);
+        result.put("isFromLocationOwner", isFromLocationOwner);
+        result.put("isToLocationOwner", isToLocationOwner);
         result.put("coordinatesUsageCount", coordinatesUsageCount);
         result.put("fromLocationUsageCount", fromLocationUsageCount);
         result.put("toLocationUsageCount", toLocationUsageCount);
         result.put("route", RouteMapper.toDto(routeToDelete));
         
-        if (hasSharedResources) {
-            // Получаем список других маршрутов для возможной перепривязки
-            List<RouteDto> alternativeRoutes = routeRepository.findAll().stream()
-                .filter(r -> !r.getId().equals(id))
-                .map(RouteMapper::toDto)
-                .collect(Collectors.toList());
-            result.put("alternativeRoutes", alternativeRoutes);
+        if (needsOwnershipTransfer) {
+            // Получаем кандидатов для передачи владения
+            List<RouteDto> coordinatesCandidates = java.util.Collections.emptyList();
+            List<RouteDto> fromLocationCandidates = java.util.Collections.emptyList();
+            List<RouteDto> toLocationCandidates = java.util.Collections.emptyList();
+            
+            if (coordinatesUsageCount > 0) {
+                coordinatesCandidates = routeRepository.findAll().stream()
+                    .filter(r -> !r.getId().equals(id))
+                    .filter(r -> r.getCoordinates().getId().equals(routeToDelete.getCoordinates().getId()))
+                    .map(RouteMapper::toDto)
+                    .collect(Collectors.toList());
+            }
+            
+            if (fromLocationUsageCount > 0) {
+                fromLocationCandidates = routeRepository.findAll().stream()
+                    .filter(r -> !r.getId().equals(id))
+                    .filter(r -> r.getFrom().getId().equals(routeToDelete.getFrom().getId()) ||
+                                 r.getTo().getId().equals(routeToDelete.getFrom().getId()))
+                    .map(RouteMapper::toDto)
+                    .collect(Collectors.toList());
+            }
+            
+            if (toLocationUsageCount > 0) {
+                toLocationCandidates = routeRepository.findAll().stream()
+                    .filter(r -> !r.getId().equals(id))
+                    .filter(r -> r.getFrom().getId().equals(routeToDelete.getTo().getId()) ||
+                                 r.getTo().getId().equals(routeToDelete.getTo().getId()))
+                    .map(RouteMapper::toDto)
+                    .collect(Collectors.toList());
+            }
+            
+            result.put("coordinatesCandidates", coordinatesCandidates);
+            result.put("fromLocationCandidates", fromLocationCandidates);
+            result.put("toLocationCandidates", toLocationCandidates);
         }
 
-        log.info("Route {} dependencies - shared resources: {}, coordinates: {}, from: {}, to: {}",
-            id, hasSharedResources, coordinatesUsageCount, fromLocationUsageCount, toLocationUsageCount);
+        log.info("Route {} ownership check - needs transfer: {}, owns: coords={}, from={}, to={}",
+            id, needsOwnershipTransfer, isCoordinatesOwner, isFromLocationOwner, isToLocationOwner);
 
         return result;
     }
@@ -143,56 +188,108 @@ public class RouteServiceMB {
     public void delete(Integer id) {
         log.info("Deleting route with id {}", id);
         
-        Route routeToDelete = routeRepository.findById(id);
-        if (routeToDelete == null) {
-            throw new IllegalArgumentException("Route not found with id: " + id);
+        // Проверяем зависимости для автоматического определения необходимости передачи владения
+        Map<String, Object> dependencies = checkDependencies(id);
+        boolean needsOwnershipTransfer = (Boolean) dependencies.get("needsOwnershipTransfer");
+        
+        if (needsOwnershipTransfer) {
+            // Автоматически передаем владение первым доступным кандидатам
+            Integer coordinatesTargetId = null;
+            Integer fromLocationTargetId = null;
+            Integer toLocationTargetId = null;
+            
+            @SuppressWarnings("unchecked")
+            List<RouteDto> coordinatesCandidates = (List<RouteDto>) dependencies.get("coordinatesCandidates");
+            if (coordinatesCandidates != null && !coordinatesCandidates.isEmpty()) {
+                coordinatesTargetId = coordinatesCandidates.get(0).id();
+            }
+            
+            @SuppressWarnings("unchecked")
+            List<RouteDto> fromLocationCandidates = (List<RouteDto>) dependencies.get("fromLocationCandidates");
+            if (fromLocationCandidates != null && !fromLocationCandidates.isEmpty()) {
+                fromLocationTargetId = fromLocationCandidates.get(0).id();
+            }
+            
+            @SuppressWarnings("unchecked")
+            List<RouteDto> toLocationCandidates = (List<RouteDto>) dependencies.get("toLocationCandidates");
+            if (toLocationCandidates != null && !toLocationCandidates.isEmpty()) {
+                toLocationTargetId = toLocationCandidates.get(0).id();
+            }
+            
+            deleteWithOwnershipTransfer(id, coordinatesTargetId, fromLocationTargetId, toLocationTargetId);
+        } else {
+            // Простое удаление без передачи владения
+            deleteWithoutOwnershipTransfer(id);
         }
-
-        // Запоминаем ID связанных объектов для возможной очистки
-        Integer coordinatesId = routeToDelete.getCoordinates().getId();
-        Integer fromLocationId = routeToDelete.getFrom().getId();
-        Integer toLocationId = routeToDelete.getTo().getId();
-
-        // Удаляем маршрут
-        routeRepository.deleteById(id);
-
-        // Проверяем и удаляем координаты/локации, если они больше не используются
-        cleanupUnusedCoordinates(coordinatesId);
-        cleanupUnusedLocation(fromLocationId);
-        cleanupUnusedLocation(toLocationId);
-
-        log.info("Route with id {} successfully deleted", id);
     }
 
-    public void deleteWithRebinding(Integer id, Integer newRouteId) {
-        log.info("Deleting route with id {} and rebinding related objects to route {}", id, newRouteId);
+    public void deleteWithRebinding(Integer id, Integer coordinatesTargetRouteId,
+                                   Integer fromLocationTargetRouteId, Integer toLocationTargetRouteId) {
+        log.info("Deleting route with id {} and rebinding: coordinates -> {}, from -> {}, to -> {}",
+            id, coordinatesTargetRouteId, fromLocationTargetRouteId, toLocationTargetRouteId);
         
         Route routeToDelete = routeRepository.findById(id);
         if (routeToDelete == null) {
             throw new IllegalArgumentException("Route not found with id: " + id);
         }
 
-        Route targetRoute = routeRepository.findById(newRouteId);
-        if (targetRoute == null) {
-            throw new IllegalArgumentException("Target route not found with id: " + newRouteId);
+        // Перепривязываем координаты, если указан целевой маршрут
+        if (coordinatesTargetRouteId != null) {
+            Route coordinatesTargetRoute = routeRepository.findById(coordinatesTargetRouteId);
+            if (coordinatesTargetRoute == null) {
+                throw new IllegalArgumentException("Coordinates target route not found with id: " + coordinatesTargetRouteId);
+            }
+            coordinatesTargetRoute.setCoordinates(routeToDelete.getCoordinates());
+            routeRepository.save(coordinatesTargetRoute);
         }
 
-        // Теперь это реальная перепривязка!
-        // Переносим связанные объекты от удаляемого маршрута к целевому
-        Integer oldCoordinatesId = routeToDelete.getCoordinates().getId();
-        Integer oldFromLocationId = routeToDelete.getFrom().getId();
-        Integer oldToLocationId = routeToDelete.getTo().getId();
+        // Перепривязываем локацию from, если указан целевой маршрут
+        if (fromLocationTargetRouteId != null) {
+            Route fromTargetRoute = routeRepository.findById(fromLocationTargetRouteId);
+            if (fromTargetRoute == null) {
+                throw new IllegalArgumentException("From location target route not found with id: " + fromLocationTargetRouteId);
+            }
+            
+            // Определяем, куда привязать локацию (from или to целевого маршрута)
+            if (fromTargetRoute.getFrom().getId().equals(routeToDelete.getFrom().getId())) {
+                fromTargetRoute.setFrom(routeToDelete.getFrom());
+            } else if (fromTargetRoute.getTo().getId().equals(routeToDelete.getFrom().getId())) {
+                fromTargetRoute.setTo(routeToDelete.getFrom());
+            }
+            routeRepository.save(fromTargetRoute);
+        }
 
-        // Обновляем целевой маршрут, используя координаты и локации удаляемого маршрута
-        targetRoute.setCoordinates(routeToDelete.getCoordinates());
-        targetRoute.setFrom(routeToDelete.getFrom());
-        targetRoute.setTo(routeToDelete.getTo());
-        routeRepository.save(targetRoute);
+        // Перепривязываем локацию to, если указан целевой маршрут
+        if (toLocationTargetRouteId != null) {
+            Route toTargetRoute = routeRepository.findById(toLocationTargetRouteId);
+            if (toTargetRoute == null) {
+                throw new IllegalArgumentException("To location target route not found with id: " + toLocationTargetRouteId);
+            }
+            
+            // Определяем, куда привязать локацию (from или to целевого маршрута)
+            if (toTargetRoute.getFrom().getId().equals(routeToDelete.getTo().getId())) {
+                toTargetRoute.setFrom(routeToDelete.getTo());
+            } else if (toTargetRoute.getTo().getId().equals(routeToDelete.getTo().getId())) {
+                toTargetRoute.setTo(routeToDelete.getTo());
+            }
+            routeRepository.save(toTargetRoute);
+        }
 
         // Удаляем исходный маршрут
         routeRepository.deleteById(id);
 
-        log.info("Route with id {} successfully deleted with rebinding to route {}", id, newRouteId);
+        // Очищаем неиспользуемые ресурсы
+        if (coordinatesTargetRouteId == null) {
+            cleanupUnusedCoordinates(routeToDelete.getCoordinates().getId());
+        }
+        if (fromLocationTargetRouteId == null) {
+            cleanupUnusedLocation(routeToDelete.getFrom().getId());
+        }
+        if (toLocationTargetRouteId == null) {
+            cleanupUnusedLocation(routeToDelete.getTo().getId());
+        }
+
+        log.info("Route {} successfully deleted with separate rebinding", id);
     }
 
     private void cleanupUnusedCoordinates(Integer coordinatesId) {
@@ -277,5 +374,94 @@ public class RouteServiceMB {
 
     public LocationDto getOrCreateLocation(LocationDto locationDto) {
         return locationService.findOrCreate(locationDto);
+    }
+    
+    // Новые методы для работы с владением
+    
+    public CoordinatesDto getOrCreateCoordinatesWithOwner(CoordinatesDto coordinatesDto, Route ownerRoute) {
+        return coordinatesService.findOrCreateWithOwner(coordinatesDto, ownerRoute);
+    }
+
+    public LocationDto getOrCreateLocationWithOwner(LocationDto locationDto, Route ownerRoute) {
+        return locationService.findOrCreateWithOwner(locationDto, ownerRoute);
+    }
+    
+    private void deleteWithOwnershipTransfer(Integer id, Integer coordinatesTargetId,
+                                           Integer fromLocationTargetId, Integer toLocationTargetId) {
+        log.info("Deleting route {} with ownership transfer: coords->{}, from->{}, to->{}",
+            id, coordinatesTargetId, fromLocationTargetId, toLocationTargetId);
+        
+        Route routeToDelete = routeRepository.findById(id);
+        if (routeToDelete == null) {
+            throw new IllegalArgumentException("Route not found with id: " + id);
+        }
+
+        // Передаем владение координатами
+        if (coordinatesTargetId != null) {
+            Route coordinatesTarget = routeRepository.findById(coordinatesTargetId);
+            if (coordinatesTarget != null) {
+                coordinatesService.transferOwnership(routeToDelete.getCoordinates().getId(), coordinatesTarget);
+                log.info("Transferred coordinates ownership to route {}", coordinatesTargetId);
+            }
+        }
+        
+        // Передаем владение локацией from
+        if (fromLocationTargetId != null) {
+            Route fromTarget = routeRepository.findById(fromLocationTargetId);
+            if (fromTarget != null) {
+                locationService.transferOwnership(routeToDelete.getFrom().getId(), fromTarget);
+                log.info("Transferred from location ownership to route {}", fromLocationTargetId);
+            }
+        }
+        
+        // Передаем владение локацией to
+        if (toLocationTargetId != null) {
+            Route toTarget = routeRepository.findById(toLocationTargetId);
+            if (toTarget != null) {
+                locationService.transferOwnership(routeToDelete.getTo().getId(), toTarget);
+                log.info("Transferred to location ownership to route {}", toLocationTargetId);
+            }
+        }
+        
+        // Удаляем маршрут
+        routeRepository.deleteById(id);
+        log.info("Route {} deleted with ownership transfer", id);
+    }
+    
+    private void deleteWithoutOwnershipTransfer(Integer id) {
+        log.info("Deleting route {} without ownership transfer", id);
+        
+        Route routeToDelete = routeRepository.findById(id);
+        if (routeToDelete == null) {
+            throw new IllegalArgumentException("Route not found with id: " + id);
+        }
+
+        // Запоминаем ID связанных объектов для возможной очистки
+        Integer coordinatesId = routeToDelete.getCoordinates().getId();
+        Integer fromLocationId = routeToDelete.getFrom().getId();
+        Integer toLocationId = routeToDelete.getTo().getId();
+        
+        boolean isCoordinatesOwner = routeToDelete.getCoordinates().getOwnerRoute() != null &&
+                                    routeToDelete.getCoordinates().getOwnerRoute().getId().equals(id);
+        boolean isFromLocationOwner = routeToDelete.getFrom().getOwnerRoute() != null &&
+                                     routeToDelete.getFrom().getOwnerRoute().getId().equals(id);
+        boolean isToLocationOwner = routeToDelete.getTo().getOwnerRoute() != null &&
+                                   routeToDelete.getTo().getOwnerRoute().getId().equals(id);
+
+        // Удаляем маршрут
+        routeRepository.deleteById(id);
+
+        // Удаляем объекты, которыми владел этот маршрут, если они больше не используются
+        if (isCoordinatesOwner) {
+            cleanupUnusedCoordinates(coordinatesId);
+        }
+        if (isFromLocationOwner) {
+            cleanupUnusedLocation(fromLocationId);
+        }
+        if (isToLocationOwner) {
+            cleanupUnusedLocation(toLocationId);
+        }
+
+        log.info("Route {} deleted without ownership transfer", id);
     }
 }

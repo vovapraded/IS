@@ -106,37 +106,22 @@ public class LocationRepositoryMB {
     }
 
     public long countUsages(Integer locationId) {
-        long fromCount = em.createQuery(
-            "SELECT COUNT(r) FROM Route r WHERE r.from.id = :locId",
+        // Считаем количество уникальных маршрутов, которые используют данную локацию
+        return em.createQuery(
+            "SELECT COUNT(DISTINCT r) FROM Route r WHERE r.from.id = :locId OR r.to.id = :locId",
             Long.class)
             .setParameter("locId", locationId)
             .getSingleResult();
-
-        long toCount = em.createQuery(
-            "SELECT COUNT(r) FROM Route r WHERE r.to.id = :locId",
-            Long.class)
-            .setParameter("locId", locationId)
-            .getSingleResult();
-
-        return fromCount + toCount;
     }
 
     public long countUsagesExcluding(Integer locationId, Integer excludeRouteId) {
-        long fromCount = em.createQuery(
-            "SELECT COUNT(r) FROM Route r WHERE r.from.id = :locId AND r.id != :excludeRouteId",
+        // Считаем количество уникальных маршрутов, которые используют данную локацию
+        return em.createQuery(
+            "SELECT COUNT(DISTINCT r) FROM Route r WHERE (r.from.id = :locId OR r.to.id = :locId) AND r.id != :excludeRouteId",
             Long.class)
             .setParameter("locId", locationId)
             .setParameter("excludeRouteId", excludeRouteId)
             .getSingleResult();
-
-        long toCount = em.createQuery(
-            "SELECT COUNT(r) FROM Route r WHERE r.to.id = :locId AND r.id != :excludeRouteId",
-            Long.class)
-            .setParameter("locId", locationId)
-            .setParameter("excludeRouteId", excludeRouteId)
-            .getSingleResult();
-
-        return fromCount + toCount;
     }
 
     public long countUsagesByValues(Double x, double y, String name) {

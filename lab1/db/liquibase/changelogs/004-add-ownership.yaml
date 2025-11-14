@@ -1,0 +1,106 @@
+databaseChangeLog:
+  - changeSet:
+      id: 004-add-ownership
+      author: system
+      changes:
+        # Добавляем поле owner_route_id в таблицу coordinates
+        - addColumn:
+            tableName: coordinates
+            columns:
+              - column:
+                  name: owner_route_id
+                  type: bigint
+                  constraints:
+                    nullable: true
+        
+        # Добавляем поле owner_route_id в таблицу locations  
+        - addColumn:
+            tableName: locations
+            columns:
+              - column:
+                  name: owner_route_id
+                  type: bigint
+                  constraints:
+                    nullable: true
+        
+        # Устанавливаем значения owner_route_id для существующих записей
+        # Для координат - берем ID первого маршрута, который их использует
+        - sql:
+            sql: |
+              UPDATE coordinates
+              SET owner_route_id = (
+                SELECT MIN(id)
+                FROM routes
+                WHERE coordinates_id = coordinates.id
+              )
+              WHERE owner_route_id IS NULL
+              AND EXISTS (
+                SELECT 1 FROM routes WHERE coordinates_id = coordinates.id
+              );
+        
+        # Удаляем координаты, которые не используются ни одним маршрутом
+        - sql:
+            sql: |
+              DELETE FROM coordinates
+              WHERE owner_route_id IS NULL
+              AND NOT EXISTS (
+                SELECT 1 FROM routes WHERE coordinates_id = coordinates.id
+              );
+        
+        # Для локаций - берем ID первого маршрута, который их использует (как from или to)
+        - sql:
+            sql: |
+              UPDATE locations
+              SET owner_route_id = (
+                SELECT MIN(route_id)
+                FROM (
+                  SELECT id as route_id FROM routes WHERE from_location_id = locations.id
+                  UNION
+                  SELECT id as route_id FROM routes WHERE to_location_id = locations.id
+                ) AS using_routes
+              )
+              WHERE owner_route_id IS NULL
+              AND EXISTS (
+                SELECT 1 FROM routes
+                WHERE from_location_id = locations.id OR to_location_id = locations.id
+              );
+        
+        # Удаляем локации, которые не используются ни одним маршрутом
+        - sql:
+            sql: |
+              DELETE FROM locations
+              WHERE owner_route_id IS NULL
+              AND NOT EXISTS (
+                SELECT 1 FROM routes
+                WHERE from_location_id = locations.id OR to_location_id = locations.id
+              );
+        
+        # Теперь делаем поля NOT NULL
+        - addNotNullConstraint:
+            tableName: coordinates
+            columnName: owner_route_id
+            columnDataType: bigint
+            
+        - addNotNullConstraint:
+            tableName: locations
+            columnName: owner_route_id
+            columnDataType: bigint
+        
+        # Добавляем внешние ключи
+        - addForeignKeyConstraint:
+            constraintName: fk_coordinates_owner_route
+            baseTableName: coordinates
+            baseColumnNames: owner_route_id
+            referencedTableName: routes
+            referencedColumnNames: id
+            onDelete: RESTRICT
+            onUpdate: CASCADE
+            
+        - addForeignKeyConstraint:
+            constraintName: fk_locations_owner_route
+            baseTableName: locations
+            baseColumnNames: owner_route_id
+            referencedTableName: routes
+            referencedColumnNames: id
+            onDelete: RESTRICT
+            onUpdate: CASCADE

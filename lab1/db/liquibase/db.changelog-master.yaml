@@ -5,3 +5,9 @@ databaseChangeLog:
       file: db/changelogs/002-functions.yaml
   - include:
       file: db/changelogs/003-refactor-to-entities.yaml
+  - include:
+      file: db/changelogs/004-add-ownership.yaml
+  - include:
+      file: db/changelogs/005-fix-function.yaml
+  - include:
+      file: db/changelogs/006-fix-ownership-nullable.yaml

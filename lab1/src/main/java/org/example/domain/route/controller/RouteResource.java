@@ -90,9 +90,17 @@ public class RouteResource {
 
     @DELETE
     @Path("/{id}")
-    public Response delete(@PathParam("id") Integer id, @QueryParam("targetRouteId") Integer targetRouteId) {
+    public Response delete(@PathParam("id") Integer id,
+                          @QueryParam("coordinatesTargetRouteId") Integer coordinatesTargetRouteId,
+                          @QueryParam("fromLocationTargetRouteId") Integer fromLocationTargetRouteId,
+                          @QueryParam("toLocationTargetRouteId") Integer toLocationTargetRouteId,
+                          @QueryParam("targetRouteId") Integer targetRouteId) {
+        // Поддерживаем старый API для совместимости
         if (targetRouteId != null) {
-            routeService.deleteWithRebinding(id, targetRouteId);
+            routeService.deleteWithRebinding(id, targetRouteId, targetRouteId, targetRouteId);
+        } else if (coordinatesTargetRouteId != null || fromLocationTargetRouteId != null || toLocationTargetRouteId != null) {
+            // Новый API с раздельной перепривязкой
+            routeService.deleteWithRebinding(id, coordinatesTargetRouteId, fromLocationTargetRouteId, toLocationTargetRouteId);
         } else {
             routeService.delete(id);
         }

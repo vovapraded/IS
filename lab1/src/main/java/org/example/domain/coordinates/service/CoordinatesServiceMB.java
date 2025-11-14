@@ -6,6 +6,7 @@ import org.example.domain.coordinates.dto.CoordinatesDto;
 import org.example.domain.coordinates.entity.Coordinates;
 import org.example.domain.coordinates.mapper.CoordinatesMapper;
 import org.example.domain.coordinates.repository.CoordinatesRepositoryMB;
+import org.example.domain.route.entity.Route;
 
 import java.util.List;
 import java.util.Optional;
@@ -53,6 +54,36 @@ public class CoordinatesServiceMB {
         
         Coordinates saved = coordinatesRepository.save(newCoordinates);
         return CoordinatesMapper.toDto(saved);
+    }
+
+    public CoordinatesDto findOrCreateWithOwner(CoordinatesDto dto, Route ownerRoute) {
+        // Проверяем, существуют ли уже такие координаты
+        Optional<Coordinates> existing = coordinatesRepository.findByXAndY(dto.x(), dto.y());
+        if (existing.isPresent()) {
+            return CoordinatesMapper.toDto(existing.get());
+        }
+        
+        // Создаем новые координаты с владельцем
+        Coordinates newCoordinates = Coordinates.builder()
+                .x(dto.x())
+                .y(dto.y())
+                .ownerRoute(ownerRoute)
+                .build();
+        
+        Coordinates saved = coordinatesRepository.save(newCoordinates);
+        return CoordinatesMapper.toDto(saved);
+    }
+
+    public void transferOwnership(Integer coordinatesId, Route newOwner) {
+        Coordinates coordinates = coordinatesRepository.findById(coordinatesId);
+        if (coordinates != null) {
+            coordinates.setOwnerRoute(newOwner);
+            coordinatesRepository.save(coordinates);
+        }
+    }
+    
+    public void updateOwner(Integer coordinatesId, Route ownerRoute) {
+        transferOwnership(coordinatesId, ownerRoute);
     }
 
     public long getUsageCount(Integer coordinatesId) {
