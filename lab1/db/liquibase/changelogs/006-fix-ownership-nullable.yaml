@@ -1,0 +1,26 @@
+databaseChangeLog:
+  - changeSet:
+      id: 006-fix-ownership-nullable
+      author: system
+      comment: Fix circular dependency issue by making owner_route_id nullable
+      changes:
+        # Отменяем NOT NULL ограничения для решения проблемы циклических зависимостей
+        - dropNotNullConstraint:
+            tableName: coordinates
+            columnName: owner_route_id
+            
+        - dropNotNullConstraint:
+            tableName: locations
+            columnName: owner_route_id
+            
+      rollback:
+        # Rollback - вернуть NOT NULL ограничения
+        - addNotNullConstraint:
+            tableName: coordinates
+            columnName: owner_route_id
+            columnDataType: bigint
+            
+        - addNotNullConstraint:
+            tableName: locations
+            columnName: owner_route_id
+            columnDataType: bigint

@@ -1,0 +1,78 @@
+databaseChangeLog:
+  - changeSet:
+      id: 005-fix-add-route-between-locations-function
+      author: system
+      comment: Update function to work with normalized model and ownership
+      changes:
+        - sql:
+            sql: |
+              CREATE OR REPLACE FUNCTION add_route_between_locations(
+                  route_name VARCHAR, 
+                  coord_x FLOAT, 
+                  coord_y DOUBLE PRECISION,
+                  from_loc_x DOUBLE PRECISION, 
+                  from_loc_y DOUBLE PRECISION, 
+                  from_loc_name VARCHAR,
+                  to_loc_x DOUBLE PRECISION, 
+                  to_loc_y DOUBLE PRECISION, 
+                  to_loc_name VARCHAR,
+                  route_distance BIGINT, 
+                  route_rating BIGINT
+              ) RETURNS INTEGER AS $$
+              DECLARE 
+                  coord_id INTEGER;
+                  from_loc_id INTEGER;
+                  to_loc_id INTEGER;
+                  new_route_id INTEGER;
+              BEGIN
+                  -- Вставляем или находим координаты
+                  INSERT INTO coordinates (x, y) 
+                  VALUES (coord_x, coord_y) 
+                  ON CONFLICT (x, y) DO NOTHING;
+                  
+                  SELECT id INTO coord_id FROM coordinates WHERE x = coord_x AND y = coord_y;
+                  
+                  -- Вставляем или находим from локацию
+                  INSERT INTO locations (x, y, name) 
+                  VALUES (from_loc_x, from_loc_y, from_loc_name) 
+                  ON CONFLICT (x, y, name) DO NOTHING;
+                  
+                  SELECT id INTO from_loc_id FROM locations 
+                  WHERE x = from_loc_x AND y = from_loc_y 
+                  AND (name = from_loc_name OR (name IS NULL AND from_loc_name IS NULL));
+                  
+                  -- Вставляем или находим to локацию  
+                  INSERT INTO locations (x, y, name) 
+                  VALUES (to_loc_x, to_loc_y, to_loc_name) 
+                  ON CONFLICT (x, y, name) DO NOTHING;
+                  
+                  SELECT id INTO to_loc_id FROM locations 
+                  WHERE x = to_loc_x AND y = to_loc_y 
+                  AND (name = to_loc_name OR (name IS NULL AND to_loc_name IS NULL));
+                  
+                  -- Создаем маршрут
+                  INSERT INTO routes (name, coordinates_id, from_location_id, to_location_id, distance, rating)
+                  VALUES (route_name, coord_id, from_loc_id, to_loc_id, route_distance, route_rating)
+                  RETURNING id INTO new_route_id;
+                  
+                  -- Устанавливаем owner_route_id для созданных объектов (если они еще не имеют владельца)
+                  UPDATE coordinates 
+                  SET owner_route_id = new_route_id 
+                  WHERE id = coord_id AND owner_route_id IS NULL;
+                  
+                  UPDATE locations 
+                  SET owner_route_id = new_route_id 
+                  WHERE id = from_loc_id AND owner_route_id IS NULL;
+                  
+                  UPDATE locations 
+                  SET owner_route_id = new_route_id 
+                  WHERE id = to_loc_id AND owner_route_id IS NULL;
+                  
+                  RETURN new_route_id;
+              END;
+              $$ LANGUAGE plpgsql;
+            splitStatements: false
+            endDelimiter: ";"
+      rollback:
+        - sql:
+            sql: DROP FUNCTION IF EXISTS add_route_between_locations(VARCHAR, FLOAT, DOUBLE PRECISION, DOUBLE PRECISION, DOUBLE PRECISION, VARCHAR, DOUBLE PRECISION, DOUBLE PRECISION, VARCHAR, BIGINT, BIGINT);
