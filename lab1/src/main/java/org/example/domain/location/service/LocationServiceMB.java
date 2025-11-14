@@ -2,6 +2,8 @@ package org.example.domain.location.service;
 
 import jakarta.ejb.Stateless;
 import jakarta.inject.Inject;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.PersistenceContext;
 import org.example.domain.location.dto.LocationDto;
 import org.example.domain.location.entity.Location;
 import org.example.domain.location.mapper.LocationMapper;
@@ -17,6 +19,9 @@ public class LocationServiceMB {
 
     @Inject
     private LocationRepositoryMB locationRepository;
+
+    @PersistenceContext(unitName = "RoutesPU")
+    private EntityManager em;
 
     public LocationDto findById(Integer id) {
         Location location = locationRepository.findById(id);
@@ -89,10 +94,42 @@ public class LocationServiceMB {
     }
 
     public void transferOwnership(Integer locationId, Route newOwner) {
-        Location location = locationRepository.findById(locationId);
+        // Загружаем location через наш EntityManager
+        Location location = em.find(Location.class, locationId);
         if (location != null) {
+            // Если newOwner из другого контекста, приводим к нашему
+            Route managedOwner = null;
+            if (newOwner != null) {
+                if (em.contains(newOwner)) {
+                    managedOwner = newOwner;
+                } else {
+                    managedOwner = em.merge(newOwner);
+                }
+            }
+            
+            location.setOwnerRoute(managedOwner);
+            em.merge(location);
+        }
+    }
+
+    public void transferOwnershipById(Integer locationId, Integer newOwnerId) {
+        // Загружаем location через наш EntityManager для единого контекста
+        Location location = em.find(Location.class, locationId);
+        if (location != null) {
+            Route newOwner = null;
+            if (newOwnerId != null) {
+                // Используем find для получения полноценного managed объекта
+                // Это решает проблему с TransientObjectException
+                newOwner = em.find(Route.class, newOwnerId);
+                if (newOwner == null) {
+                    throw new IllegalArgumentException("Route not found with id: " + newOwnerId);
+                }
+            }
+            
+            // Оба объекта теперь из одного EntityManager контекста
             location.setOwnerRoute(newOwner);
-            locationRepository.save(location);
+            // Сохраняем через EntityManager для консистентности
+            em.merge(location);
         }
     }
     

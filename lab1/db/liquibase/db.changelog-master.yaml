@@ -11,3 +11,7 @@ databaseChangeLog:
       file: db/changelogs/005-fix-function.yaml
   - include:
       file: db/changelogs/006-fix-ownership-nullable.yaml
+  - include:
+      file: db/changelogs/007-fix-ownership-fk-constraints.yaml
+  - include:
+      file: db/changelogs/008-fix-routes-fk-constraints.yaml

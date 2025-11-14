@@ -1,9 +1,11 @@
 import React, { useState } from "react";
 import {
   Paper, Typography, TextField, Button, Box, Alert,
-  Card, CardContent, Grid, Divider, Chip, CircularProgress
+  Card, CardContent, Grid, Divider, Chip, CircularProgress,
+  Tooltip
 } from "@mui/material";
 import SearchIcon from '@mui/icons-material/Search';
+import CircleIcon from "@mui/icons-material/Circle";
 import api from "../api";
 
 function RouteDetails() {
@@ -39,6 +41,41 @@ function RouteDetails() {
 
   const formatDate = (dateString) => {
     return new Date(dateString).toLocaleString("ru-RU");
+  };
+
+  // Компонент для отображения информации о владельце
+  const OwnerIndicator = ({ ownerRouteId, ownerRouteName, currentRouteId, type }) => {
+    const isOwnedByCurrentRoute = ownerRouteId === currentRouteId;
+    
+    return (
+      <Box sx={{ display: 'flex', alignItems: 'center', mt: 1 }}>
+        <Typography>
+          <strong>Владелец:</strong>
+        </Typography>
+        {ownerRouteId ? (
+          <Box sx={{ display: 'flex', alignItems: 'center', ml: 1 }}>
+            <Typography>
+              Маршрут #{ownerRouteId} ({ownerRouteName})
+            </Typography>
+            {isOwnedByCurrentRoute && (
+              <Tooltip title="Принадлежит этому маршруту" arrow>
+                <CircleIcon
+                  sx={{
+                    color: '#ffa726',
+                    fontSize: '14px',
+                    ml: 0.5
+                  }}
+                />
+              </Tooltip>
+            )}
+          </Box>
+        ) : (
+          <Typography color="text.secondary" sx={{ ml: 1 }}>
+            Не назначен
+          </Typography>
+        )}
+      </Box>
+    );
   };
 
   return (
@@ -143,9 +180,12 @@ function RouteDetails() {
                       <Typography sx={{ fontFamily: 'monospace', fontSize: '1.1rem' }}>
                         Y: {route.coordinates.y}
                       </Typography>
-                      <Typography sx={{ mt: 1 }}>
-                        <strong>Владелец:</strong> Маршрут #{route.coordinates.ownerRouteId}
-                      </Typography>
+                      <OwnerIndicator
+                        ownerRouteId={route.coordinates.ownerRouteId}
+                        ownerRouteName={route.coordinates.ownerRouteName}
+                        currentRouteId={route.id}
+                        type="coordinates"
+                      />
                     </Box>
                   </CardContent>
                 </Card>
@@ -167,6 +207,12 @@ function RouteDetails() {
                           <strong>Название:</strong> {route.from.name}
                         </Typography>
                       )}
+                      <OwnerIndicator
+                        ownerRouteId={route.from.ownerRouteId}
+                        ownerRouteName={route.from.ownerRouteName}
+                        currentRouteId={route.id}
+                        type="from-location"
+                      />
                     </Box>
                   </CardContent>
                 </Card>
@@ -188,6 +234,12 @@ function RouteDetails() {
                           <strong>Название:</strong> {route.to.name}
                         </Typography>
                       )}
+                      <OwnerIndicator
+                        ownerRouteId={route.to.ownerRouteId}
+                        ownerRouteName={route.to.ownerRouteName}
+                        currentRouteId={route.id}
+                        type="to-location"
+                      />
                     </Box>
                   </CardContent>
                 </Card>

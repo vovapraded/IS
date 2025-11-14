@@ -1,0 +1,69 @@
+databaseChangeLog:
+  - changeSet:
+      id: 008-fix-routes-fk-constraints
+      author: system
+      comment: Fix FK constraints from routes to coordinates/locations to allow proper deletion
+      changes:
+        # Удаляем существующие FK constraints от routes
+        - dropForeignKeyConstraint:
+            baseTableName: routes
+            constraintName: fk_routes_coordinates
+            
+        - dropForeignKeyConstraint:
+            baseTableName: routes
+            constraintName: fk_routes_from_location
+            
+        - dropForeignKeyConstraint:
+            baseTableName: routes
+            constraintName: fk_routes_to_location
+            
+        # Добавляем FK constraints с правильными правилами
+        - addForeignKeyConstraint:
+            constraintName: fk_routes_coordinates
+            baseTableName: routes
+            baseColumnNames: coordinates_id
+            referencedTableName: coordinates
+            referencedColumnNames: id
+            onDelete: RESTRICT
+            onUpdate: CASCADE
+            
+        - addForeignKeyConstraint:
+            constraintName: fk_routes_from_location
+            baseTableName: routes
+            baseColumnNames: from_location_id
+            referencedTableName: locations
+            referencedColumnNames: id
+            onDelete: RESTRICT
+            onUpdate: CASCADE
+            
+        - addForeignKeyConstraint:
+            constraintName: fk_routes_to_location
+            baseTableName: routes
+            baseColumnNames: to_location_id
+            referencedTableName: locations
+            referencedColumnNames: id
+            onDelete: RESTRICT
+            onUpdate: CASCADE
+            
+      rollback:
+        # Rollback - вернуть исходные FK constraints
+        - dropForeignKeyConstraint:
+            baseTableName: routes
+            constraintName: fk_routes_coordinates
+            
+        - dropForeignKeyConstraint:
+            baseTableName: routes
+            constraintName: fk_routes_from_location
+            
+        - dropForeignKeyConstraint:
+            baseTableName: routes
+            constraintName: fk_routes_to_location
+            
+        - sql:
+            sql: |
+              ALTER TABLE routes ADD CONSTRAINT fk_routes_coordinates 
+                  FOREIGN KEY (coordinates_id) REFERENCES coordinates(id);
+              ALTER TABLE routes ADD CONSTRAINT fk_routes_from_location 
+                  FOREIGN KEY (from_location_id) REFERENCES locations(id);
+              ALTER TABLE routes ADD CONSTRAINT fk_routes_to_location 
+                  FOREIGN KEY (to_location_id) REFERENCES locations(id);

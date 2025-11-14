@@ -2,6 +2,8 @@ package org.example.domain.coordinates.service;
 
 import jakarta.ejb.Stateless;
 import jakarta.inject.Inject;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.PersistenceContext;
 import org.example.domain.coordinates.dto.CoordinatesDto;
 import org.example.domain.coordinates.entity.Coordinates;
 import org.example.domain.coordinates.mapper.CoordinatesMapper;
@@ -17,6 +19,9 @@ public class CoordinatesServiceMB {
 
     @Inject
     private CoordinatesRepositoryMB coordinatesRepository;
+
+    @PersistenceContext(unitName = "RoutesPU")
+    private EntityManager em;
 
     public CoordinatesDto findById(Integer id) {
         Coordinates coordinates = coordinatesRepository.findById(id);
@@ -75,10 +80,42 @@ public class CoordinatesServiceMB {
     }
 
     public void transferOwnership(Integer coordinatesId, Route newOwner) {
-        Coordinates coordinates = coordinatesRepository.findById(coordinatesId);
+        // Загружаем coordinates через наш EntityManager
+        Coordinates coordinates = em.find(Coordinates.class, coordinatesId);
         if (coordinates != null) {
+            // Если newOwner из другого контекста, приводим к нашему
+            Route managedOwner = null;
+            if (newOwner != null) {
+                if (em.contains(newOwner)) {
+                    managedOwner = newOwner;
+                } else {
+                    managedOwner = em.merge(newOwner);
+                }
+            }
+            
+            coordinates.setOwnerRoute(managedOwner);
+            em.merge(coordinates);
+        }
+    }
+
+    public void transferOwnershipById(Integer coordinatesId, Integer newOwnerId) {
+        // Загружаем coordinates через наш EntityManager для единого контекста
+        Coordinates coordinates = em.find(Coordinates.class, coordinatesId);
+        if (coordinates != null) {
+            Route newOwner = null;
+            if (newOwnerId != null) {
+                // Используем find для получения полноценного managed объекта
+                // Это решает проблему с TransientObjectException
+                newOwner = em.find(Route.class, newOwnerId);
+                if (newOwner == null) {
+                    throw new IllegalArgumentException("Route not found with id: " + newOwnerId);
+                }
+            }
+            
+            // Оба объекта теперь из одного EntityManager контекста
             coordinates.setOwnerRoute(newOwner);
-            coordinatesRepository.save(coordinates);
+            // Сохраняем через EntityManager для консистентности
+            em.merge(coordinates);
         }
     }
     

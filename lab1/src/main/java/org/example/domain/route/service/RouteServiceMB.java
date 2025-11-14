@@ -2,6 +2,9 @@ package org.example.domain.route.service;
 
 import jakarta.ejb.Stateless;
 import jakarta.inject.Inject;
+import jakarta.transaction.Transactional;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.PersistenceContext;
 import lombok.extern.slf4j.Slf4j;
 import org.example.domain.route.dto.*;
 import org.example.domain.route.entity.Route;
@@ -38,6 +41,9 @@ public class RouteServiceMB {
     @Inject
     private LocationRepositoryMB locationRepository;
 
+    @PersistenceContext(unitName = "RoutesPU")
+    private EntityManager em;
+
     public RouteDto createRoute(RouteCreateDto dto) {
         log.info("Creating route {}", dto);
         
@@ -46,14 +52,16 @@ public class RouteServiceMB {
         LocationDto fromDto = locationService.findOrCreate(dto.from());
         LocationDto toDto = locationService.findOrCreate(dto.to());
         
-        // Создаем маршрут с установленными связями
+        // Создаем маршрут с установленными связями используя единый EntityManager
         Route entity = new Route();
         entity.setName(dto.name());
         entity.setDistance(dto.distance());
         entity.setRating(dto.rating());
-        entity.setCoordinates(coordinatesRepository.findById(coordsDto.id()));
-        entity.setFrom(locationRepository.findById(fromDto.id()));
-        entity.setTo(locationRepository.findById(toDto.id()));
+        
+        // Используем единый EntityManager для загрузки всех связанных объектов
+        entity.setCoordinates(em.find(org.example.domain.coordinates.entity.Coordinates.class, coordsDto.id()));
+        entity.setFrom(em.find(org.example.domain.location.entity.Location.class, fromDto.id()));
+        entity.setTo(em.find(org.example.domain.location.entity.Location.class, toDto.id()));
         
         // Сохраняем маршрут
         Route saved = routeRepository.save(entity);
@@ -130,7 +138,10 @@ public class RouteServiceMB {
         long toLocationUsageCount = isToLocationOwner ?
             locationService.getUsageCountExcluding(routeToDelete.getTo().getId(), id) : 0;
 
-        boolean needsOwnershipTransfer = coordinatesUsageCount > 0 || fromLocationUsageCount > 0 || toLocationUsageCount > 0;
+        // Нужна перепривязка только если маршрут владеет объектом И этот объект используется в других маршрутах
+        boolean needsOwnershipTransfer = (isCoordinatesOwner && coordinatesUsageCount > 0) ||
+                                        (isFromLocationOwner && fromLocationUsageCount > 0) ||
+                                        (isToLocationOwner && toLocationUsageCount > 0);
         
         Map<String, Object> result = new HashMap<>();
         result.put("needsOwnershipTransfer", needsOwnershipTransfer);
@@ -185,6 +196,7 @@ public class RouteServiceMB {
         return result;
     }
 
+    @Transactional
     public void delete(Integer id) {
         log.info("Deleting route with id {}", id);
         
@@ -223,70 +235,92 @@ public class RouteServiceMB {
         }
     }
 
+    @Transactional
     public void deleteWithRebinding(Integer id, Integer coordinatesTargetRouteId,
                                    Integer fromLocationTargetRouteId, Integer toLocationTargetRouteId) {
         log.info("Deleting route with id {} and rebinding: coordinates -> {}, from -> {}, to -> {}",
             id, coordinatesTargetRouteId, fromLocationTargetRouteId, toLocationTargetRouteId);
         
-        Route routeToDelete = routeRepository.findById(id);
+        // ИСПОЛЬЗУЕМ ЕДИНЫЙ EntityManager для всех операций
+        Route routeToDelete = em.find(Route.class, id);
         if (routeToDelete == null) {
             throw new IllegalArgumentException("Route not found with id: " + id);
         }
 
-        // Перепривязываем координаты, если указан целевой маршрут
+        // Получаем связанные объекты через единый EntityManager
+        org.example.domain.coordinates.entity.Coordinates coordinates = routeToDelete.getCoordinates();
+        org.example.domain.location.entity.Location fromLocation = routeToDelete.getFrom();
+        org.example.domain.location.entity.Location toLocation = routeToDelete.getTo();
+
+        // Передаем владение координатами указанному целевому маршруту
         if (coordinatesTargetRouteId != null) {
-            Route coordinatesTargetRoute = routeRepository.findById(coordinatesTargetRouteId);
+            Route coordinatesTargetRoute = em.find(Route.class, coordinatesTargetRouteId);
             if (coordinatesTargetRoute == null) {
                 throw new IllegalArgumentException("Coordinates target route not found with id: " + coordinatesTargetRouteId);
             }
-            coordinatesTargetRoute.setCoordinates(routeToDelete.getCoordinates());
-            routeRepository.save(coordinatesTargetRoute);
+            
+            // Передаем владение координатами через единый EntityManager
+            coordinates.setOwnerRoute(coordinatesTargetRoute);
+            em.merge(coordinates);
+            
+            log.info("Transferred coordinates ownership from route {} to route {}", id, coordinatesTargetRouteId);
+        } else {
+            // Если целевой маршрут не указан, очищаем владение
+            coordinates.setOwnerRoute(null);
+            em.merge(coordinates);
         }
 
-        // Перепривязываем локацию from, если указан целевой маршрут
+        // Передаем владение локацией from указанному целевому маршруту
         if (fromLocationTargetRouteId != null) {
-            Route fromTargetRoute = routeRepository.findById(fromLocationTargetRouteId);
+            Route fromTargetRoute = em.find(Route.class, fromLocationTargetRouteId);
             if (fromTargetRoute == null) {
                 throw new IllegalArgumentException("From location target route not found with id: " + fromLocationTargetRouteId);
             }
             
-            // Определяем, куда привязать локацию (from или to целевого маршрута)
-            if (fromTargetRoute.getFrom().getId().equals(routeToDelete.getFrom().getId())) {
-                fromTargetRoute.setFrom(routeToDelete.getFrom());
-            } else if (fromTargetRoute.getTo().getId().equals(routeToDelete.getFrom().getId())) {
-                fromTargetRoute.setTo(routeToDelete.getFrom());
-            }
-            routeRepository.save(fromTargetRoute);
+            // Передаем владение локацией через единый EntityManager
+            fromLocation.setOwnerRoute(fromTargetRoute);
+            em.merge(fromLocation);
+            
+            log.info("Transferred from location ownership from route {} to route {}", id, fromLocationTargetRouteId);
+        } else {
+            // Если целевой маршрут не указан, очищаем владение
+            fromLocation.setOwnerRoute(null);
+            em.merge(fromLocation);
         }
 
-        // Перепривязываем локацию to, если указан целевой маршрут
+        // Передаем владение локацией to указанному целевому маршруту
         if (toLocationTargetRouteId != null) {
-            Route toTargetRoute = routeRepository.findById(toLocationTargetRouteId);
+            Route toTargetRoute = em.find(Route.class, toLocationTargetRouteId);
             if (toTargetRoute == null) {
                 throw new IllegalArgumentException("To location target route not found with id: " + toLocationTargetRouteId);
             }
             
-            // Определяем, куда привязать локацию (from или to целевого маршрута)
-            if (toTargetRoute.getFrom().getId().equals(routeToDelete.getTo().getId())) {
-                toTargetRoute.setFrom(routeToDelete.getTo());
-            } else if (toTargetRoute.getTo().getId().equals(routeToDelete.getTo().getId())) {
-                toTargetRoute.setTo(routeToDelete.getTo());
-            }
-            routeRepository.save(toTargetRoute);
+            // Передаем владение локацией через единый EntityManager
+            toLocation.setOwnerRoute(toTargetRoute);
+            em.merge(toLocation);
+            
+            log.info("Transferred to location ownership from route {} to route {}", id, toLocationTargetRouteId);
+        } else {
+            // Если целевой маршрут не указан, очищаем владение
+            toLocation.setOwnerRoute(null);
+            em.merge(toLocation);
         }
 
-        // Удаляем исходный маршрут
-        routeRepository.deleteById(id);
+        // КРИТИЧЕСКИ ВАЖНО: принудительно сохраняем все изменения владения
+        em.flush();
 
-        // Очищаем неиспользуемые ресурсы
+        // Теперь безопасно удаляем маршрут через единый EntityManager
+        em.remove(routeToDelete);
+
+        // Очищаем неиспользуемые ресурсы после успешного удаления
         if (coordinatesTargetRouteId == null) {
-            cleanupUnusedCoordinates(routeToDelete.getCoordinates().getId());
+            cleanupUnusedCoordinates(coordinates.getId());
         }
         if (fromLocationTargetRouteId == null) {
-            cleanupUnusedLocation(routeToDelete.getFrom().getId());
+            cleanupUnusedLocation(fromLocation.getId());
         }
         if (toLocationTargetRouteId == null) {
-            cleanupUnusedLocation(routeToDelete.getTo().getId());
+            cleanupUnusedLocation(toLocation.getId());
         }
 
         log.info("Route {} successfully deleted with separate rebinding", id);
@@ -386,70 +420,118 @@ public class RouteServiceMB {
         return locationService.findOrCreateWithOwner(locationDto, ownerRoute);
     }
     
+    @Transactional
     private void deleteWithOwnershipTransfer(Integer id, Integer coordinatesTargetId,
                                            Integer fromLocationTargetId, Integer toLocationTargetId) {
         log.info("Deleting route {} with ownership transfer: coords->{}, from->{}, to->{}",
             id, coordinatesTargetId, fromLocationTargetId, toLocationTargetId);
         
-        Route routeToDelete = routeRepository.findById(id);
+        // Загружаем все объекты через ЕДИНЫЙ EntityManager
+        Route routeToDelete = em.find(Route.class, id);
         if (routeToDelete == null) {
             throw new IllegalArgumentException("Route not found with id: " + id);
         }
 
+        // Получаем связанные объекты через единый EntityManager
+        org.example.domain.coordinates.entity.Coordinates coordinates = routeToDelete.getCoordinates();
+        org.example.domain.location.entity.Location fromLocation = routeToDelete.getFrom();
+        org.example.domain.location.entity.Location toLocation = routeToDelete.getTo();
+        
         // Передаем владение координатами
         if (coordinatesTargetId != null) {
-            Route coordinatesTarget = routeRepository.findById(coordinatesTargetId);
+            Route coordinatesTarget = em.find(Route.class, coordinatesTargetId);
             if (coordinatesTarget != null) {
-                coordinatesService.transferOwnership(routeToDelete.getCoordinates().getId(), coordinatesTarget);
+                coordinates.setOwnerRoute(coordinatesTarget);
+                em.merge(coordinates);
                 log.info("Transferred coordinates ownership to route {}", coordinatesTargetId);
             }
+        } else {
+            // Очищаем владение
+            coordinates.setOwnerRoute(null);
+            em.merge(coordinates);
         }
         
-        // Передаем владение локацией from
+        // Передаем владение from локацией
         if (fromLocationTargetId != null) {
-            Route fromTarget = routeRepository.findById(fromLocationTargetId);
+            Route fromTarget = em.find(Route.class, fromLocationTargetId);
             if (fromTarget != null) {
-                locationService.transferOwnership(routeToDelete.getFrom().getId(), fromTarget);
+                fromLocation.setOwnerRoute(fromTarget);
+                em.merge(fromLocation);
                 log.info("Transferred from location ownership to route {}", fromLocationTargetId);
             }
+        } else {
+            fromLocation.setOwnerRoute(null);
+            em.merge(fromLocation);
         }
         
-        // Передаем владение локацией to
+        // Передаем владение to локацией
         if (toLocationTargetId != null) {
-            Route toTarget = routeRepository.findById(toLocationTargetId);
+            Route toTarget = em.find(Route.class, toLocationTargetId);
             if (toTarget != null) {
-                locationService.transferOwnership(routeToDelete.getTo().getId(), toTarget);
+                toLocation.setOwnerRoute(toTarget);
+                em.merge(toLocation);
                 log.info("Transferred to location ownership to route {}", toLocationTargetId);
             }
+        } else {
+            toLocation.setOwnerRoute(null);
+            em.merge(toLocation);
         }
         
-        // Удаляем маршрут
-        routeRepository.deleteById(id);
-        log.info("Route {} deleted with ownership transfer", id);
+        // Принудительно сохраняем все изменения владения
+        em.flush();
+        
+        // Теперь безопасно удаляем маршрут через EntityManager
+        em.remove(routeToDelete);
+        
+        log.info("Route {} deleted with ownership transfer completed", id);
     }
     
+    @Transactional
     private void deleteWithoutOwnershipTransfer(Integer id) {
         log.info("Deleting route {} without ownership transfer", id);
         
-        Route routeToDelete = routeRepository.findById(id);
+        // Загружаем объект через единый EntityManager
+        Route routeToDelete = em.find(Route.class, id);
         if (routeToDelete == null) {
             throw new IllegalArgumentException("Route not found with id: " + id);
         }
 
-        // Запоминаем ID связанных объектов для возможной очистки
-        Integer coordinatesId = routeToDelete.getCoordinates().getId();
-        Integer fromLocationId = routeToDelete.getFrom().getId();
-        Integer toLocationId = routeToDelete.getTo().getId();
+        // Получаем связанные объекты через единый EntityManager
+        org.example.domain.coordinates.entity.Coordinates coordinates = routeToDelete.getCoordinates();
+        org.example.domain.location.entity.Location fromLocation = routeToDelete.getFrom();
+        org.example.domain.location.entity.Location toLocation = routeToDelete.getTo();
         
-        boolean isCoordinatesOwner = routeToDelete.getCoordinates().getOwnerRoute() != null &&
-                                    routeToDelete.getCoordinates().getOwnerRoute().getId().equals(id);
-        boolean isFromLocationOwner = routeToDelete.getFrom().getOwnerRoute() != null &&
-                                     routeToDelete.getFrom().getOwnerRoute().getId().equals(id);
-        boolean isToLocationOwner = routeToDelete.getTo().getOwnerRoute() != null &&
-                                   routeToDelete.getTo().getOwnerRoute().getId().equals(id);
+        // Запоминаем ID для возможной очистки
+        Integer coordinatesId = coordinates.getId();
+        Integer fromLocationId = fromLocation.getId();
+        Integer toLocationId = toLocation.getId();
+        
+        boolean isCoordinatesOwner = coordinates.getOwnerRoute() != null &&
+                                    coordinates.getOwnerRoute().getId().equals(id);
+        boolean isFromLocationOwner = fromLocation.getOwnerRoute() != null &&
+                                     fromLocation.getOwnerRoute().getId().equals(id);
+        boolean isToLocationOwner = toLocation.getOwnerRoute() != null &&
+                                   toLocation.getOwnerRoute().getId().equals(id);
 
-        // Удаляем маршрут
-        routeRepository.deleteById(id);
+        // Очищаем владение перед удалением маршрута через единый EntityManager
+        if (isCoordinatesOwner) {
+            coordinates.setOwnerRoute(null);
+            em.merge(coordinates);
+        }
+        if (isFromLocationOwner) {
+            fromLocation.setOwnerRoute(null);
+            em.merge(fromLocation);
+        }
+        if (isToLocationOwner) {
+            toLocation.setOwnerRoute(null);
+            em.merge(toLocation);
+        }
+
+        // Принудительно сохраняем изменения
+        em.flush();
+        
+        // Удаляем маршрут через EntityManager
+        em.remove(routeToDelete);
 
         // Удаляем объекты, которыми владел этот маршрут, если они больше не используются
         if (isCoordinatesOwner) {

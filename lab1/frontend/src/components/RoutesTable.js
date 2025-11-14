@@ -3,7 +3,8 @@ import {
   Table, TableHead, TableRow, TableCell, TableBody, IconButton,
   TextField, Box, Pagination, Paper, TableContainer,
   Typography, Chip, Grid, InputAdornment, Dialog, DialogTitle,
-  DialogContent, DialogActions, Button, Autocomplete, Alert
+  DialogContent, DialogActions, Button, Autocomplete, Alert,
+  Tooltip
 } from "@mui/material";
 import EditIcon from "@mui/icons-material/Edit";
 import DeleteIcon from "@mui/icons-material/Delete";
@@ -11,6 +12,7 @@ import SearchIcon from "@mui/icons-material/Search";
 import ClearIcon from "@mui/icons-material/Clear";
 import ArrowUpwardIcon from "@mui/icons-material/ArrowUpward";
 import ArrowDownwardIcon from "@mui/icons-material/ArrowDownward";
+import CircleIcon from "@mui/icons-material/Circle";
 import api from "../api";
 
 function RoutesTable({
@@ -38,6 +40,24 @@ function RoutesTable({
   const [selectedToLocationTarget, setSelectedToLocationTarget] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+
+  // Компонент для отображения индикатора владельца
+  const OwnershipIndicator = ({ isOwned, ownerRouteName, type }) => {
+    if (!isOwned) return null;
+    
+    return (
+      <Tooltip title={`Принадлежит маршруту: ${ownerRouteName}`} arrow>
+        <CircleIcon
+          sx={{
+            color: '#ffa726', // Жёлто-оранжевый цвет
+            fontSize: '12px',
+            ml: 0.5,
+            cursor: 'pointer'
+          }}
+        />
+      </Tooltip>
+    );
+  };
 
   const handleFilterSubmit = (e) => {
     e.preventDefault();
@@ -68,7 +88,7 @@ function RoutesTable({
       const dependenciesResponse = await api.get(`/routes/${route.id}/check-dependencies`);
       const dependencyInfo = dependenciesResponse.data;
       
-      if (dependencyInfo.hasSharedResources) {
+      if (dependencyInfo.needsOwnershipTransfer) {
         // Есть связанные объекты - показываем диалог выбора целевых маршрутов
         setRebindDialog({ open: true, route, dependencyInfo });
         setCoordinatesCandidates(dependencyInfo.coordinatesCandidates || []);
@@ -278,29 +298,54 @@ function RoutesTable({
                     />
                   </TableCell>
                   <TableCell>
-                    <Typography variant="body2" sx={{ fontFamily: 'monospace' }}>
-                      ({route.coordinates.x}, {route.coordinates.y})
-                    </Typography>
+                    <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                      <Typography variant="body2" sx={{ fontFamily: 'monospace' }}>
+                        ({route.coordinates.x}, {route.coordinates.y})
+                      </Typography>
+                      <OwnershipIndicator
+                        isOwned={route.coordinates.ownerRouteId === route.id}
+                        ownerRouteName={route.coordinates.ownerRouteName}
+                        type="coordinates"
+                      />
+                    </Box>
                   </TableCell>
                   <TableCell>
-                    <Typography variant="body2" sx={{ fontFamily: 'monospace' }}>
-                      ({route.from.x}, {route.from.y})
-                      {route.from.name && (
-                        <Typography component="span" variant="body2" color="text.secondary">
-                          <br />{route.from.name}
+                    <Box sx={{ display: 'flex', alignItems: 'flex-start' }}>
+                      <Box sx={{ flex: 1 }}>
+                        <Typography variant="body2" sx={{ fontFamily: 'monospace' }}>
+                          ({route.from.x}, {route.from.y})
+                          {route.from.name && (
+                            <Typography component="span" variant="body2" color="text.secondary">
+                              <br />{route.from.name}
+                            </Typography>
+                          )}
                         </Typography>
-                      )}
-                    </Typography>
+                      </Box>
+                      <OwnershipIndicator
+                        isOwned={route.from.ownerRouteId === route.id}
+                        ownerRouteName={route.from.ownerRouteName}
+                        type="from-location"
+                      />
+                    </Box>
                   </TableCell>
                   <TableCell>
-                    <Typography variant="body2" sx={{ fontFamily: 'monospace' }}>
-                      ({route.to.x}, {route.to.y})
-                      {route.to.name && (
-                        <Typography component="span" variant="body2" color="text.secondary">
-                          <br />{route.to.name}
+                    <Box sx={{ display: 'flex', alignItems: 'flex-start' }}>
+                      <Box sx={{ flex: 1 }}>
+                        <Typography variant="body2" sx={{ fontFamily: 'monospace' }}>
+                          ({route.to.x}, {route.to.y})
+                          {route.to.name && (
+                            <Typography component="span" variant="body2" color="text.secondary">
+                              <br />{route.to.name}
+                            </Typography>
+                          )}
                         </Typography>
-                      )}
-                    </Typography>
+                      </Box>
+                      <OwnershipIndicator
+                        isOwned={route.to.ownerRouteId === route.id}
+                        ownerRouteName={route.to.ownerRouteName}
+                        type="to-location"
+                      />
+                    </Box>
                   </TableCell>
                   <TableCell>
                     <Box sx={{ display: 'flex', gap: 1 }}>
