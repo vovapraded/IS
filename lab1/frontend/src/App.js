@@ -148,7 +148,7 @@ function App() {
   };
 
   // Сохранение маршрута (создание или обновление)
-  const handleSubmit = async (values) => {
+  const handleSubmit = async (values, refreshFormData) => {
     const dto = {
       name: values.name,
       distance: Number(values.distance),
@@ -171,8 +171,13 @@ function App() {
         await api.post("/routes", dto);
       }
       
-      // Перезагрузка данных
+      // Перезагрузка данных таблицы
       loadRoutes(currentPage, filterName, sortBy, sortDirection);
+      
+      // Обновление данных формы (координаты и локации)
+      if (refreshFormData) {
+        refreshFormData();
+      }
     } catch (err) {
       console.error("Ошибка сохранения маршрута:", err);
       setError("Не удалось сохранить маршрут. Проверьте введенные данные.");

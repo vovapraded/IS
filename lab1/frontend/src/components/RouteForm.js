@@ -59,29 +59,30 @@ function RouteForm({ initialValues, onSubmit, onCancel }) {
     initialValues,
     validationSchema,
     enableReinitialize: true,
-    onSubmit
+    onSubmit: (values) => onSubmit(values, loadRelatedData)
   });
 
   const isEditing = !!initialValues.id;
 
+  // Функция для загрузки связанных данных
+  const loadRelatedData = async () => {
+    try {
+      const [coordsResponse, locationsResponse, namesResponse] = await Promise.all([
+        api.get("/routes/related/coordinates"),
+        api.get("/routes/related/locations"),
+        api.get("/routes/related/location-names")
+      ]);
+      
+      setAvailableCoordinates(coordsResponse.data || []);
+      setAvailableLocations(locationsResponse.data || []);
+      setLocationNames(namesResponse.data || []);
+    } catch (err) {
+      console.error("Ошибка загрузки связанных данных:", err);
+    }
+  };
+
   // Загрузка доступных данных при монтировании компонента
   useEffect(() => {
-    const loadRelatedData = async () => {
-      try {
-        const [coordsResponse, locationsResponse, namesResponse] = await Promise.all([
-          api.get("/routes/related/coordinates"),
-          api.get("/routes/related/locations"),
-          api.get("/routes/related/location-names")
-        ]);
-        
-        setAvailableCoordinates(coordsResponse.data || []);
-        setAvailableLocations(locationsResponse.data || []);
-        setLocationNames(namesResponse.data || []);
-      } catch (err) {
-        console.error("Ошибка загрузки связанных данных:", err);
-      }
-    };
-    
     loadRelatedData();
   }, []);
 
@@ -200,7 +201,12 @@ function RouteForm({ initialValues, onSubmit, onCancel }) {
                   control={
                     <Switch
                       checked={useExistingCoordinates}
-                      onChange={(e) => setUseExistingCoordinates(e.target.checked)}
+                      onChange={(e) => {
+                        setUseExistingCoordinates(e.target.checked);
+                        if (e.target.checked) {
+                          loadRelatedData(); // Обновляем данные при включении режима выбора
+                        }
+                      }}
                     />
                   }
                   label="Выбрать из существующих координат"
@@ -215,12 +221,10 @@ function RouteForm({ initialValues, onSubmit, onCancel }) {
                       getOptionLabel={formatCoordinates}
                       onChange={handleCoordinatesSelect}
                       renderOption={(props, option) => (
-                        <Box component="li" {...props}>
-                          <Chip
-                            label={formatCoordinates(option)}
-                            size="small"
-                            sx={{ mr: 1 }}
-                          />
+                        <Box component="li" {...props} sx={{ display: 'flex', alignItems: 'center', minHeight: '48px' }}>
+                          <Typography variant="body2" sx={{ whiteSpace: 'nowrap', overflow: 'visible' }}>
+                            {formatCoordinates(option)}
+                          </Typography>
                         </Box>
                       )}
                       renderInput={(params) => (
@@ -295,7 +299,12 @@ function RouteForm({ initialValues, onSubmit, onCancel }) {
                   control={
                     <Switch
                       checked={useExistingFromLocation}
-                      onChange={(e) => setUseExistingFromLocation(e.target.checked)}
+                      onChange={(e) => {
+                        setUseExistingFromLocation(e.target.checked);
+                        if (e.target.checked) {
+                          loadRelatedData(); // Обновляем данные при включении режима выбора
+                        }
+                      }}
                     />
                   }
                   label="Выбрать из существующих локаций отправления"
@@ -310,12 +319,10 @@ function RouteForm({ initialValues, onSubmit, onCancel }) {
                       getOptionLabel={formatLocation}
                       onChange={handleFromLocationSelect}
                       renderOption={(props, option) => (
-                        <Box component="li" {...props}>
-                          <Chip
-                            label={formatLocation(option)}
-                            size="small"
-                            sx={{ mr: 1 }}
-                          />
+                        <Box component="li" {...props} sx={{ display: 'flex', alignItems: 'center', minHeight: '48px' }}>
+                          <Typography variant="body2" sx={{ whiteSpace: 'nowrap', overflow: 'visible' }}>
+                            {formatLocation(option)}
+                          </Typography>
                         </Box>
                       )}
                       renderInput={(params) => (
@@ -406,7 +413,12 @@ function RouteForm({ initialValues, onSubmit, onCancel }) {
                   control={
                     <Switch
                       checked={useExistingToLocation}
-                      onChange={(e) => setUseExistingToLocation(e.target.checked)}
+                      onChange={(e) => {
+                        setUseExistingToLocation(e.target.checked);
+                        if (e.target.checked) {
+                          loadRelatedData(); // Обновляем данные при включении режима выбора
+                        }
+                      }}
                     />
                   }
                   label="Выбрать из существующих локаций назначения"
@@ -421,12 +433,10 @@ function RouteForm({ initialValues, onSubmit, onCancel }) {
                       getOptionLabel={formatLocation}
                       onChange={handleToLocationSelect}
                       renderOption={(props, option) => (
-                        <Box component="li" {...props}>
-                          <Chip
-                            label={formatLocation(option)}
-                            size="small"
-                            sx={{ mr: 1 }}
-                          />
+                        <Box component="li" {...props} sx={{ display: 'flex', alignItems: 'center', minHeight: '48px' }}>
+                          <Typography variant="body2" sx={{ whiteSpace: 'nowrap', overflow: 'visible' }}>
+                            {formatLocation(option)}
+                          </Typography>
                         </Box>
                       )}
                       renderInput={(params) => (
