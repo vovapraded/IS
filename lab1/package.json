@@ -7,5 +7,11 @@
     "axios": "^1.12.2",
     "formik": "^2.4.6",
     "yup": "^1.7.1"
+  },
+  "scripts": {
+    "build": "cd frontend && npm run build",
+    "compile": "npm run build && cd frontend/build && jar -cvf ../frontend.war .",
+    "compile-advanced": "cd frontend && npm run build && cd .. && ./scripts/build-frontend-war.sh",
+    "start": "cd frontend && npm start"
   }
 }

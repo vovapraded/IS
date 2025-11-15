@@ -10,7 +10,6 @@ import api from "../api";
 
 function SpecialOperations() {
   const [loading, setLoading] = useState({});
-  const [results, setResults] = useState({});
   const [errors, setErrors] = useState({});
   
   // Состояния для каждой операции
@@ -133,7 +132,7 @@ function SpecialOperations() {
     setLoadingState('add', true);
     clearError('add');
     try {
-      const response = await api.post('/routes/special/add-between-locations', {
+      await api.post('/routes/special/add-between-locations', {
         routeName: addParams.routeName,
         coordX: parseFloat(addParams.coordX),
         coordY: parseFloat(addParams.coordY),

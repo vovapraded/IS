@@ -4,7 +4,7 @@ import * as Yup from "yup";
 import {
   Button, TextField, Grid, Typography, Box, Paper,
   Card, CardContent, CardActions, Divider, Accordion, AccordionSummary, AccordionDetails,
-  Switch, FormControlLabel, Autocomplete, Chip
+  Switch, FormControlLabel, Autocomplete
 } from "@mui/material";
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import SaveIcon from '@mui/icons-material/Save';
@@ -53,7 +53,6 @@ function RouteForm({ initialValues, onSubmit, onCancel }) {
   // Состояния для доступных данных
   const [availableCoordinates, setAvailableCoordinates] = useState([]);
   const [availableLocations, setAvailableLocations] = useState([]);
-  const [locationNames, setLocationNames] = useState([]);
 
   const formik = useFormik({
     initialValues,
@@ -67,15 +66,13 @@ function RouteForm({ initialValues, onSubmit, onCancel }) {
   // Функция для загрузки связанных данных
   const loadRelatedData = async () => {
     try {
-      const [coordsResponse, locationsResponse, namesResponse] = await Promise.all([
+      const [coordsResponse, locationsResponse] = await Promise.all([
         api.get("/routes/related/coordinates"),
-        api.get("/routes/related/locations"),
-        api.get("/routes/related/location-names")
+        api.get("/routes/related/locations")
       ]);
       
       setAvailableCoordinates(coordsResponse.data || []);
       setAvailableLocations(locationsResponse.data || []);
-      setLocationNames(namesResponse.data || []);
     } catch (err) {
       console.error("Ошибка загрузки связанных данных:", err);
     }

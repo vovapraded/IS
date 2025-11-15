@@ -1,8 +1,11 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useMemo } from 'react';
 
 const useAutoRefresh = (callback, intervalMs = 30000, dependencies = []) => {
   const intervalRef = useRef(null);
   const callbackRef = useRef(callback);
+
+  // Создаем стабильный массив зависимостей
+  const memoizedDeps = useMemo(() => [intervalMs, ...dependencies], [intervalMs, dependencies]);
 
   // Обновляем ref callback при каждом рендере
   useEffect(() => {
@@ -23,7 +26,7 @@ const useAutoRefresh = (callback, intervalMs = 30000, dependencies = []) => {
         clearInterval(intervalRef.current);
       }
     };
-  }, [intervalMs, ...dependencies]);
+  }, memoizedDeps);
 
   // Функция для ручной остановки обновлений
   const stopAutoRefresh = () => {
