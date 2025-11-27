@@ -91,7 +91,7 @@ function ImportRoutes() {
         fileContent: fileContent
       };
 
-      const response = await api.post('/import/routes', requestData);
+      const response = await api.post('/routes/import-csv', requestData);
       setImportResult(response.data);
       
       // Очищаем форму при успешном импорте

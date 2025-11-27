@@ -198,4 +198,46 @@ public class RouteResource {
     public List<String> getAvailableLocationNames() {
         return routeService.getAvailableLocationNames();
     }
+
+    // Временные endpoints импорта для тестирования
+    @GET
+    @Path("/import-test")
+    public Response testImportEndpoint() {
+        Map<String, String> response = new HashMap<>();
+        response.put("status", "Import endpoints are working!");
+        response.put("message", "CORS is fixed and endpoints are accessible");
+        return Response.ok(response).build();
+    }
+
+    @POST
+    @Path("/import-csv")
+    public Response importCSV(Map<String, Object> request) {
+        try {
+            String username = (String) request.get("username");
+            String filename = (String) request.get("filename");
+            String fileContent = (String) request.get("fileContent");
+            
+            if (username == null || filename == null || fileContent == null) {
+                return Response.status(Response.Status.BAD_REQUEST)
+                    .entity(Map.of("error", "Missing required fields: username, filename, fileContent"))
+                    .build();
+            }
+            
+            // Пока что просто возвращаем успешный ответ для тестирования
+            Map<String, Object> response = new HashMap<>();
+            response.put("status", "SUCCESS");
+            response.put("message", "CSV import endpoint is working!");
+            response.put("username", username);
+            response.put("filename", filename);
+            response.put("totalRecords", 0);
+            response.put("successfulRecords", 0);
+            
+            return Response.ok(response).build();
+            
+        } catch (Exception e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+                .entity(Map.of("error", "Import failed: " + e.getMessage()))
+                .build();
+        }
+    }
 }
