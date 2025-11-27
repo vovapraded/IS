@@ -15,3 +15,5 @@ databaseChangeLog:
       file: db/changelogs/007-fix-ownership-fk-constraints.yaml
   - include:
       file: db/changelogs/008-fix-routes-fk-constraints.yaml
+  - include:
+      file: db/changelogs/009-add-import-operations.yaml

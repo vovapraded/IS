@@ -7,6 +7,8 @@ import RoutesTable from "./components/RoutesTable";
 import RouteForm from "./components/RouteForm";
 import RouteDetails from "./components/RouteDetails";
 import SpecialOperations from "./components/SpecialOperations";
+import ImportRoutes from "./components/ImportRoutes";
+import ImportHistory from "./components/ImportHistory";
 
 function App() {
   const [activeSection, setActiveSection] = useState('main');
@@ -292,6 +294,20 @@ function App() {
         return (
           <Container maxWidth="lg" sx={{ py: 2 }}>
             <SpecialOperations />
+          </Container>
+        );
+
+      case 'import':
+        return (
+          <Container maxWidth="lg" sx={{ py: 2 }}>
+            <ImportRoutes />
+          </Container>
+        );
+
+      case 'import-history':
+        return (
+          <Container maxWidth="lg" sx={{ py: 2 }}>
+            <ImportHistory />
           </Container>
         );
 
