@@ -15,7 +15,7 @@
     "formik": "^2.4.6",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
-    "react-scripts": "^5.0.1",
+    "react-scripts": "5.0.1",
     "web-vitals": "^4.2.4",
     "yup": "^1.7.1"
   },
@@ -47,7 +47,7 @@
     "nth-check": "^2.1.1",
     "postcss": "^8.4.47",
     "js-yaml": "^4.1.1",
-    "webpack-dev-server": "^5.2.2",
+    "webpack-dev-server": "4.15.1",
     "rollup-plugin-terser": "npm:@rollup/plugin-terser@^0.4.4",
     "@humanwhocodes/config-array": "npm:@eslint/config-array@^0.18.0",
     "@humanwhocodes/object-schema": "npm:@eslint/object-schema@^2.1.4",
