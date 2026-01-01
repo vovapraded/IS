@@ -28,21 +28,8 @@ public class ImportOperationServiceMB {
         return ImportOperationMapper.toDto(operation);
     }
 
-    public List<ImportOperationDto> findAll() {
-        return importOperationRepository.findAll().stream()
-                .map(ImportOperationMapper::toDto)
-                .collect(Collectors.toList());
-    }
-
     public List<ImportOperationDto> findByUsername(String username) {
         return importOperationRepository.findByUsername(username).stream()
-                .map(ImportOperationMapper::toDto)
-                .collect(Collectors.toList());
-    }
-
-    public List<ImportOperationDto> findWithPagination(int page, int size) {
-        int offset = page * size;
-        return importOperationRepository.findWithPagination(offset, size).stream()
                 .map(ImportOperationMapper::toDto)
                 .collect(Collectors.toList());
     }
@@ -52,10 +39,6 @@ public class ImportOperationServiceMB {
         return importOperationRepository.findByUsernameWithPagination(username, offset, size).stream()
                 .map(ImportOperationMapper::toDto)
                 .collect(Collectors.toList());
-    }
-
-    public long countAll() {
-        return importOperationRepository.countAll();
     }
 
     public long countByUsername(String username) {

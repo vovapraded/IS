@@ -14,8 +14,6 @@ import {
   Chip,
   Pagination,
   TextField,
-  FormControlLabel,
-  Switch,
   Alert,
   CircularProgress,
   Dialog,
@@ -49,7 +47,6 @@ function ImportHistory() {
   const [totalPages, setTotalPages] = useState(0);
   const [totalCount, setTotalCount] = useState(0);
   const [username, setUsername] = useState('');
-  const [isAdmin, setIsAdmin] = useState(false);
   const [selectedOperation, setSelectedOperation] = useState(null);
   const [showDetails, setShowDetails] = useState(false);
   const [stats, setStats] = useState(null);
@@ -64,12 +61,16 @@ function ImportHistory() {
     try {
       const params = {
         page,
-        size: pageSize,
-        admin: isAdmin
+        size: pageSize
       };
       
-      if (!isAdmin && username.trim()) {
+      if (username.trim()) {
         params.username = username.trim();
+      } else {
+        setError('Необходимо указать имя пользователя');
+        setOperations([]);
+        setLoading(false);
+        return;
       }
       
       const response = await api.get('/import/history', { params });
@@ -86,13 +87,13 @@ function ImportHistory() {
     } finally {
       setLoading(false);
     }
-  }, [isAdmin, username, pageSize]);
+  }, [username, pageSize]);
 
   // Загрузка статистики
   const loadStats = useCallback(async () => {
     try {
       const params = {};
-      if (!isAdmin && username.trim()) {
+      if (username.trim()) {
         params.username = username.trim();
       }
       
@@ -101,7 +102,7 @@ function ImportHistory() {
     } catch (err) {
       console.error('Error loading stats:', err);
     }
-  }, [isAdmin, username]);
+  }, [username]);
 
   // Загрузка детальной информации об операции
   const loadOperationDetails = async (operationId) => {
@@ -130,14 +131,14 @@ function ImportHistory() {
     setUsername(event.target.value);
   };
 
-  const handleAdminToggle = (event) => {
-    setIsAdmin(event.target.checked);
-    setCurrentPage(0);
-  };
 
   const handleSearch = () => {
-    loadHistory(0);
-    loadStats();
+    if (username.trim()) {
+      loadHistory(0);
+      loadStats();
+    } else {
+      setError('Необходимо указать имя пользователя');
+    }
   };
 
   // Форматирование даты
@@ -196,7 +197,7 @@ function ImportHistory() {
       </Typography>
       
       <Typography variant="body1" color="text.secondary" align="center" sx={{ mb: 4 }}>
-        Просмотр всех операций импорта маршрутов
+        Просмотр операций импорта маршрутов для конкретного пользователя
       </Typography>
 
       {/* Статистика */}
@@ -243,45 +244,31 @@ function ImportHistory() {
       <Card sx={{ mb: 3 }}>
         <CardContent>
           <Typography variant="h6" gutterBottom>
-            🔍 Фильтры
+            🔍 Поиск операций
           </Typography>
           
           <Box sx={{ display: 'flex', gap: 2, alignItems: 'center', flexWrap: 'wrap' }}>
-            <FormControlLabel
-              control={
-                <Switch
-                  checked={isAdmin}
-                  onChange={handleAdminToggle}
-                  color="primary"
-                />
-              }
-              label="Режим администратора"
+            <TextField
+              label="Имя пользователя"
+              value={username}
+              onChange={handleUsernameChange}
+              size="small"
+              sx={{ minWidth: 200 }}
+              required
             />
             
-            {!isAdmin && (
-              <TextField
-                label="Имя пользователя"
-                value={username}
-                onChange={handleUsernameChange}
-                size="small"
-                sx={{ minWidth: 200 }}
-              />
-            )}
-            
-            <Button 
-              variant="contained" 
+            <Button
+              variant="contained"
               onClick={handleSearch}
-              disabled={!isAdmin && !username.trim()}
+              disabled={!username.trim()}
             >
-              Применить
+              Найти операции
             </Button>
           </Box>
           
-          {!isAdmin && (
-            <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
-              В обычном режиме отображаются только операции указанного пользователя
-            </Typography>
-          )}
+          <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
+            Отображаются только операции указанного пользователя
+          </Typography>
         </CardContent>
       </Card>
 
@@ -305,9 +292,9 @@ function ImportHistory() {
             </Box>
           ) : operations.length === 0 ? (
             <Typography variant="body1" color="text.secondary" align="center" sx={{ py: 4 }}>
-              {!isAdmin && !username.trim() 
-                ? 'Введите имя пользователя для просмотра истории' 
-                : 'Операции импорта не найдены'
+              {!username.trim()
+                ? 'Введите имя пользователя для просмотра истории'
+                : 'Операции импорта для данного пользователя не найдены'
               }
             </Typography>
           ) : (

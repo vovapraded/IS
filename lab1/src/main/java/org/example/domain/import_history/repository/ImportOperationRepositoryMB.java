@@ -18,21 +18,9 @@ public class ImportOperationRepositoryMB {
         return em.find(ImportOperation.class, id);
     }
 
-    public List<ImportOperation> findAll() {
-        return em.createQuery("SELECT io FROM ImportOperation io ORDER BY io.startTime DESC", ImportOperation.class)
-                .getResultList();
-    }
-
     public List<ImportOperation> findByUsername(String username) {
         return em.createQuery("SELECT io FROM ImportOperation io WHERE io.username = :username ORDER BY io.startTime DESC", ImportOperation.class)
                 .setParameter("username", username)
-                .getResultList();
-    }
-
-    public List<ImportOperation> findWithPagination(int offset, int limit) {
-        return em.createQuery("SELECT io FROM ImportOperation io ORDER BY io.startTime DESC", ImportOperation.class)
-                .setFirstResult(offset)
-                .setMaxResults(limit)
                 .getResultList();
     }
 
@@ -42,11 +30,6 @@ public class ImportOperationRepositoryMB {
                 .setFirstResult(offset)
                 .setMaxResults(limit)
                 .getResultList();
-    }
-
-    public long countAll() {
-        return em.createQuery("SELECT COUNT(io) FROM ImportOperation io", Long.class)
-                .getSingleResult();
     }
 
     public long countByUsername(String username) {

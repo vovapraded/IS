@@ -75,40 +75,29 @@ public class ImportResource {
     }
 
     /**
-     * Получение истории импорта для всех пользователей (только для администратора)
+     * Получение истории импорта для конкретного пользователя
      */
     @GET
     @Path("/history")
     public Response getImportHistory(
             @QueryParam("page") @DefaultValue("0") int page,
             @QueryParam("size") @DefaultValue("20") int size,
-            @QueryParam("admin") @DefaultValue("false") boolean isAdmin,
             @QueryParam("username") String username) {
         
         try {
-            if (isAdmin) {
-                // Администратор видит все операции
-                List<ImportOperationDto> operations = importOperationService.findWithPagination(page, size);
-                long totalCount = importOperationService.countAll();
-                
-                return Response.ok()
-                    .entity(new ImportHistoryResponse(operations, totalCount, page, size))
-                    .build();
-            } else {
-                // Обычный пользователь видит только свои операции
-                if (username == null || username.trim().isEmpty()) {
-                    return Response.status(Response.Status.BAD_REQUEST)
-                        .entity("{\"error\":\"Username is required for non-admin users\"}")
-                        .build();
-                }
-                
-                List<ImportOperationDto> operations = importOperationService.findByUsernameWithPagination(username, page, size);
-                long totalCount = importOperationService.countByUsername(username);
-                
-                return Response.ok()
-                    .entity(new ImportHistoryResponse(operations, totalCount, page, size))
+            // Пользователь видит только свои операции
+            if (username == null || username.trim().isEmpty()) {
+                return Response.status(Response.Status.BAD_REQUEST)
+                    .entity("{\"error\":\"Username is required\"}")
                     .build();
             }
+            
+            List<ImportOperationDto> operations = importOperationService.findByUsernameWithPagination(username, page, size);
+            long totalCount = importOperationService.countByUsername(username);
+            
+            return Response.ok()
+                .entity(new ImportHistoryResponse(operations, totalCount, page, size))
+                .build();
             
         } catch (Exception e) {
             log.error("Error getting import history", e);
@@ -174,31 +163,21 @@ public class ImportResource {
     @Path("/stats")
     public Response getImportStats(@QueryParam("username") String username) {
         try {
-            long totalOperations;
-            long successfulOperations;
-            long failedOperations;
-            
-            if (username != null && !username.trim().isEmpty()) {
-                // Статистика для конкретного пользователя
-                List<ImportOperationDto> userOperations = importOperationService.findByUsername(username);
-                totalOperations = userOperations.size();
-                successfulOperations = userOperations.stream()
-                    .mapToLong(op -> "SUCCESS".equals(op.status().name()) ? 1 : 0)
-                    .sum();
-                failedOperations = userOperations.stream()
-                    .mapToLong(op -> "FAILED".equals(op.status().name()) ? 1 : 0)
-                    .sum();
-            } else {
-                // Общая статистика
-                List<ImportOperationDto> allOperations = importOperationService.findAll();
-                totalOperations = allOperations.size();
-                successfulOperations = allOperations.stream()
-                    .mapToLong(op -> "SUCCESS".equals(op.status().name()) ? 1 : 0)
-                    .sum();
-                failedOperations = allOperations.stream()
-                    .mapToLong(op -> "FAILED".equals(op.status().name()) ? 1 : 0)
-                    .sum();
+            // Статистика только для указанного пользователя
+            if (username == null || username.trim().isEmpty()) {
+                return Response.status(Response.Status.BAD_REQUEST)
+                    .entity("{\"error\":\"Username is required\"}")
+                    .build();
             }
+            
+            List<ImportOperationDto> userOperations = importOperationService.findByUsername(username);
+            long totalOperations = userOperations.size();
+            long successfulOperations = userOperations.stream()
+                .mapToLong(op -> "SUCCESS".equals(op.status().name()) ? 1 : 0)
+                .sum();
+            long failedOperations = userOperations.stream()
+                .mapToLong(op -> "FAILED".equals(op.status().name()) ? 1 : 0)
+                .sum();
             
             return Response.ok()
                 .entity(new ImportStatsResponse(totalOperations, successfulOperations, failedOperations))
