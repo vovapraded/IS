@@ -15,7 +15,7 @@ import org.example.domain.import_history.service.RouteImportService;
 
 import java.util.List;
 
-@Path("/api/import")
+@Path("/import")
 @Produces(MediaType.APPLICATION_JSON)
 @Consumes(MediaType.APPLICATION_JSON)
 @Slf4j

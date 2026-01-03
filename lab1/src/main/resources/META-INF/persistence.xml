@@ -9,6 +9,7 @@
         <class>org.example.domain.route.entity.Route</class>
         <class>org.example.domain.coordinates.entity.Coordinates</class>
         <class>org.example.domain.location.entity.Location</class>
+        <class>org.example.domain.import_history.entity.ImportOperation</class>
 
         <properties>
             <property name="hibernate.dialect" value="org.hibernate.dialect.PostgreSQLDialect"/>

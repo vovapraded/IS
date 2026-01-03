@@ -58,10 +58,6 @@ databaseChangeLog:
                   type: TEXT
                   constraints:
                     nullable: true
-        - addCheckConstraint:
-            tableName: import_operations
-            constraintName: chk_import_status
-            checkCondition: "status IN ('IN_PROGRESS', 'SUCCESS', 'FAILED')"
         - createIndex:
             tableName: import_operations
             indexName: idx_import_operations_username
