@@ -87,8 +87,20 @@ public class RouteImportServiceMB {
                 }
             }
             
-            // Если есть ошибки валидации, прекращаем импорт
-            if (!errors.isEmpty()) {
+            // Подсчитываем количество ошибок связанных с дубликатами
+            int duplicateCount = 0;
+            int validationErrorCount = 0;
+            
+            for (String error : errors) {
+                if (error.contains("already exists")) {
+                    duplicateCount++;
+                } else {
+                    validationErrorCount++;
+                }
+            }
+            
+            // Если есть критические ошибки валидации (не дубликаты), прекращаем импорт
+            if (validationErrorCount > 0) {
                 String errorMessage = "Validation failed: " + String.join("; ", errors);
                 importOperationService.failImportOperation(operationId, errorMessage);
                 
@@ -100,6 +112,22 @@ public class RouteImportServiceMB {
                     parsedRoutes.size(),
                     errors,
                     "Import failed due to validation errors"
+                );
+            }
+            
+            // Если только дубликаты, но нет новых записей для импорта
+            if (validRoutes.isEmpty() && duplicateCount > 0) {
+                String message = "All " + duplicateCount + " routes already exist in database";
+                importOperationService.completeImportOperation(operationId, 0);
+                
+                return new ImportResultDto(
+                    operationId,
+                    ImportStatus.SUCCESS,
+                    parsedRoutes.size(),
+                    0,
+                    duplicateCount,
+                    errors, // Показываем предупреждения о дубликатах
+                    message
                 );
             }
             
@@ -132,16 +160,28 @@ public class RouteImportServiceMB {
             // Завершение операции импорта
             importOperationService.completeImportOperation(operationId, successfulCount);
             
-            log.info("Import completed successfully. {} routes imported", successfulCount);
+            String message;
+            if (duplicateCount > 0 && successfulCount > 0) {
+                message = String.format("Import completed: %d routes imported, %d routes skipped (already exist)",
+                                      successfulCount, duplicateCount);
+                log.info("Import completed with mixed results. {} routes imported, {} duplicates skipped",
+                        successfulCount, duplicateCount);
+            } else if (duplicateCount > 0) {
+                message = String.format("No new routes imported: all %d routes already exist", duplicateCount);
+                log.info("Import completed but no new routes added. {} duplicates found", duplicateCount);
+            } else {
+                message = "Import completed successfully";
+                log.info("Import completed successfully. {} routes imported", successfulCount);
+            }
             
             return new ImportResultDto(
                 operationId,
                 ImportStatus.SUCCESS,
                 parsedRoutes.size(),
                 successfulCount,
-                0,
-                Collections.emptyList(),
-                "Import completed successfully"
+                duplicateCount,
+                duplicateCount > 0 ? errors : Collections.emptyList(), // Показываем предупреждения о дубликатах
+                message
             );
             
         } catch (Exception e) {

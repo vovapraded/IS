@@ -55,23 +55,24 @@ function ImportHistory() {
 
   // Загрузка истории импорта
   const loadHistory = useCallback(async (page = 0) => {
+    // Не загружаем историю если имя пользователя не указано
+    if (!username.trim()) {
+      setOperations([]);
+      setTotalPages(0);
+      setTotalCount(0);
+      setCurrentPage(0);
+      return;
+    }
+
     setLoading(true);
     setError(null);
     
     try {
       const params = {
         page,
-        size: pageSize
+        size: pageSize,
+        username: username.trim()
       };
-      
-      if (username.trim()) {
-        params.username = username.trim();
-      } else {
-        setError('Необходимо указать имя пользователя');
-        setOperations([]);
-        setLoading(false);
-        return;
-      }
       
       const response = await api.get('/import/history', { params });
       
@@ -91,16 +92,22 @@ function ImportHistory() {
 
   // Загрузка статистики
   const loadStats = useCallback(async () => {
+    // Не загружаем статистику если имя пользователя не указано
+    if (!username.trim()) {
+      setStats(null);
+      return;
+    }
+
     try {
-      const params = {};
-      if (username.trim()) {
-        params.username = username.trim();
-      }
+      const params = {
+        username: username.trim()
+      };
       
       const response = await api.get('/import/stats', { params });
       setStats(response.data);
     } catch (err) {
       console.error('Error loading stats:', err);
+      setStats(null);
     }
   }, [username]);
 
@@ -134,10 +141,18 @@ function ImportHistory() {
 
   const handleSearch = () => {
     if (username.trim()) {
+      setError(null); // Очищаем предыдущие ошибки
       loadHistory(0);
       loadStats();
     } else {
       setError('Необходимо указать имя пользователя');
+    }
+  };
+
+  // Обработка нажатия Enter в поле ввода
+  const handleUsernameKeyPress = (event) => {
+    if (event.key === 'Enter') {
+      handleSearch();
     }
   };
 
@@ -252,9 +267,11 @@ function ImportHistory() {
               label="Имя пользователя"
               value={username}
               onChange={handleUsernameChange}
+              onKeyPress={handleUsernameKeyPress}
               size="small"
               sx={{ minWidth: 200 }}
               required
+              placeholder="Введите имя пользователя"
             />
             
             <Button

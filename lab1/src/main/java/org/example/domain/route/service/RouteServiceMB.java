@@ -372,12 +372,17 @@ public class RouteServiceMB {
                                            Double toX, double toY, String toName,
                                            Long distance, Long rating) {
         log.info("Adding route between locations {} and {}", fromName, toName);
-        Integer newRouteId = routeRepository.addRouteBetweenLocations(
-                routeName, coordX, coordY, fromX, fromY, fromName,
-                toX, toY, toName, distance, rating);
         
-        Route createdRoute = routeRepository.findById(newRouteId);
-        return createdRoute != null ? RouteMapper.toDto(createdRoute) : null;
+        // Используем существующий метод createRoute с правильной структурой
+        CoordinatesDto coordinatesDto = new CoordinatesDto(null, coordX, coordY, null, null);
+        LocationDto fromDto = new LocationDto(null, fromX, fromY, fromName, null, null);
+        LocationDto toDto = new LocationDto(null, toX, toY, toName, null, null);
+        
+        RouteCreateDto routeCreateDto = new RouteCreateDto(
+            routeName, coordinatesDto, fromDto, toDto, distance, rating
+        );
+        
+        return createRoute(routeCreateDto);
     }
 
     // Новые методы для работы с связанными объектами

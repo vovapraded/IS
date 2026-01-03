@@ -18,6 +18,10 @@ import org.example.domain.route.dto.*;
 import org.example.domain.route.service.RouteServiceMB;
 import org.example.domain.coordinates.dto.CoordinatesDto;
 import org.example.domain.location.dto.LocationDto;
+import org.example.domain.import_history.service.RouteImportServiceMB;
+import org.example.domain.import_history.dto.ImportRequestDto;
+import org.example.domain.import_history.dto.ImportResultDto;
+import lombok.extern.slf4j.Slf4j;
 
 import java.util.HashMap;
 import java.util.List;
@@ -26,10 +30,14 @@ import java.util.Map;
 @Path("/routes")
 @Produces(MediaType.APPLICATION_JSON)
 @Consumes(MediaType.APPLICATION_JSON)
+@Slf4j
 public class RouteResource {
 
     @Inject
     private RouteServiceMB routeService;
+    
+    @Inject
+    private RouteImportServiceMB routeImportService;
 
     @GET
     public List<RouteDto> getAllRoutes() {
@@ -110,8 +118,15 @@ public class RouteResource {
     // Специальные операции
     @GET
     @Path("/special/max-name")
-    public RouteDto getRouteWithMaxName() {
-        return routeService.findRouteWithMaxName();
+    public Response getRouteWithMaxName() {
+        RouteDto route = routeService.findRouteWithMaxName();
+        if (route == null) {
+            Map<String, Object> response = new HashMap<>();
+            response.put("message", "Маршруты не найдены");
+            response.put("route", null);
+            return Response.ok(response).build();
+        }
+        return Response.ok(route).build();
     }
 
     @GET
@@ -198,6 +213,26 @@ public class RouteResource {
     public List<String> getAvailableLocationNames() {
         return routeService.getAvailableLocationNames();
     }
+    
+    @GET
+    @Path("/related/all-locations")
+    public Response getAllLocations() {
+        try {
+            List<LocationDto> fromLocations = routeService.getAvailableFromLocations();
+            List<LocationDto> toLocations = routeService.getAvailableToLocations();
+            
+            // Объединяем все локации
+            List<LocationDto> allLocations = new java.util.ArrayList<>();
+            allLocations.addAll(fromLocations);
+            allLocations.addAll(toLocations);
+            
+            return Response.ok(allLocations).build();
+        } catch (Exception e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+                .entity(Map.of("error", "Failed to load locations: " + e.getMessage()))
+                .build();
+        }
+    }
 
     // Временные endpoints импорта для тестирования
     @GET
@@ -213,6 +248,8 @@ public class RouteResource {
     @Path("/import-csv")
     public Response importCSV(Map<String, Object> request) {
         try {
+            log.info("Received CSV import request: {}", request);
+            
             String username = (String) request.get("username");
             String filename = (String) request.get("filename");
             String fileContent = (String) request.get("fileContent");
@@ -223,18 +260,34 @@ public class RouteResource {
                     .build();
             }
             
-            // Пока что просто возвращаем успешный ответ для тестирования
+            // Создаем DTO для импорта
+            ImportRequestDto importRequest = new ImportRequestDto(username, filename, fileContent);
+            
+            // Выполняем реальный импорт через сервис
+            ImportResultDto result = routeImportService.importRoutes(importRequest);
+            
+            // Формируем ответ
             Map<String, Object> response = new HashMap<>();
-            response.put("status", "SUCCESS");
-            response.put("message", "CSV import endpoint is working!");
+            response.put("status", result.status().name());
+            response.put("message", result.message());
             response.put("username", username);
             response.put("filename", filename);
-            response.put("totalRecords", 0);
-            response.put("successfulRecords", 0);
+            response.put("totalRecords", result.totalRecords());
+            response.put("successfulRecords", result.successfulRecords());
+            response.put("failedRecords", result.failedRecords());
             
-            return Response.ok(response).build();
+            if (!result.errors().isEmpty()) {
+                response.put("errors", result.errors());
+            }
+            
+            if ("SUCCESS".equals(result.status().name())) {
+                return Response.ok(response).build();
+            } else {
+                return Response.status(Response.Status.BAD_REQUEST).entity(response).build();
+            }
             
         } catch (Exception e) {
+            log.error("Import failed with exception", e);
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
                 .entity(Map.of("error", "Import failed: " + e.getMessage()))
                 .build();

@@ -1,8 +1,8 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
-  Paper, Typography, TextField, Button, Box, Alert, Card, CardContent, 
+  Paper, Typography, TextField, Button, Box, Alert, Card, CardContent,
   Grid, Divider, Accordion, AccordionSummary, AccordionDetails,
-  Table, TableHead, TableRow, TableCell, TableBody, MenuItem, Select, FormControl, InputLabel
+  Table, TableHead, TableRow, TableCell, TableBody, MenuItem, Select, FormControl, InputLabel, Autocomplete
 } from "@mui/material";
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import PlayArrowIcon from '@mui/icons-material/PlayArrow';
@@ -24,6 +24,15 @@ function SpecialOperations() {
     routeName: "", coordX: "", coordY: "", fromX: "", fromY: "", fromName: "",
     toX: "", toY: "", toName: "", distance: "", rating: ""
   });
+  
+  // Список всех локаций
+  const [allLocations, setAllLocations] = useState([]);
+  const [rawLocations, setRawLocations] = useState([]); // Исходные данные локаций
+  
+  // Состояния для контроля автокомплитов
+  const [selectedRouteLocation, setSelectedRouteLocation] = useState("");
+  const [selectedFromLocation, setSelectedFromLocation] = useState("");
+  const [selectedToLocation, setSelectedToLocation] = useState("");
 
   const setLoadingState = (operation, isLoading) => {
     setLoading(prev => ({ ...prev, [operation]: isLoading }));
@@ -37,13 +46,55 @@ function SpecialOperations() {
     setErrors(prev => ({ ...prev, [operation]: null }));
   };
 
+  // Загрузка всех локаций
+  useEffect(() => {
+    const loadAllLocations = async () => {
+      try {
+        const response = await api.get('/routes/related/all-locations');
+        
+        // Сохраняем исходные данные
+        setRawLocations(response.data);
+        
+        // Форматируем локации для отображения
+        const formatted = response.data.map(location => {
+          if (location.name && location.name.trim()) {
+            return location.name;
+          } else {
+            return `(${location.x}, ${location.y})`;
+          }
+        });
+        
+        // Убираем дубликаты и сортируем
+        const unique = [...new Set(formatted)].sort();
+        setAllLocations(unique);
+      } catch (err) {
+        console.error('Error loading locations:', err);
+        setAllLocations([]);
+        setRawLocations([]);
+      }
+    };
+    
+    loadAllLocations();
+  }, []);
+
   // 1. Получить объект с максимальным name
   const handleMaxName = async () => {
     setLoadingState('maxName', true);
     clearError('maxName');
     try {
       const response = await api.get('/routes/special/max-name');
-      setMaxNameResult(response.data);
+      
+      // Если ответ содержит message, значит маршруты не найдены
+      if (response.data.message && response.data.route === null) {
+        setMaxNameResult(null);
+        setError('maxName', response.data.message);
+      } else if (response.data.id) {
+        // Если это объект маршрута напрямую
+        setMaxNameResult(response.data);
+      } else {
+        // Если это оболочка с route внутри
+        setMaxNameResult(response.data.route);
+      }
     } catch (err) {
       console.error("Ошибка получения маршрута с максимальным именем:", err);
       setError('maxName', "Ошибка получения данных");
@@ -96,19 +147,19 @@ function SpecialOperations() {
   // 4. Поиск маршрутов между локациями
   const handleFindBetweenLocations = async () => {
     if (!betweenParams.from || !betweenParams.to) {
-      setError('between', 'Введите названия обеих локаций');
+      setError('between', 'Выберите обе локации для поиска');
       return;
     }
     setLoadingState('between', true);
     clearError('between');
     try {
-      const response = await api.get('/routes/special/between-locations', {
-        params: {
-          from: betweenParams.from,
-          to: betweenParams.to,
-          sortBy: betweenParams.sortBy
-        }
-      });
+      const params = {
+        from: betweenParams.from,
+        to: betweenParams.to,
+        sortBy: betweenParams.sortBy
+      };
+
+      const response = await api.get('/routes/special/between-locations', { params });
       setBetweenResult(response.data);
     } catch (err) {
       console.error("Ошибка поиска маршрутов между локациями:", err);
@@ -116,6 +167,103 @@ function SpecialOperations() {
       setBetweenResult([]);
     } finally {
       setLoadingState('between', false);
+    }
+  };
+
+  // Функция для парсинга выбранной локации
+  const parseLocationSelection = (locationString) => {
+    if (!locationString) return { x: "", y: "", name: "" };
+    
+    // Если это координаты в формате "(x, y)"
+    const coordMatch = locationString.match(/^\((-?\d+(?:\.\d+)?),\s*(-?\d+(?:\.\d+)?)\)$/);
+    if (coordMatch) {
+      return {
+        x: coordMatch[1],
+        y: coordMatch[2],
+        name: ""
+      };
+    }
+    
+    // Если это название локации, находим её в исходных данных
+    const foundLocation = rawLocations.find(loc =>
+      loc.name && loc.name.trim() === locationString
+    );
+    
+    if (foundLocation) {
+      return {
+        x: foundLocation.x.toString(),
+        y: foundLocation.y.toString(),
+        name: foundLocation.name
+      };
+    }
+    
+    // Если не нашли, возвращаем только название
+    return {
+      x: "",
+      y: "",
+      name: locationString
+    };
+  };
+
+  // Обработчик выбора координат маршрута
+  const handleRouteLocationSelect = (selectedLocation) => {
+    setSelectedRouteLocation(selectedLocation || "");
+    const parsed = parseLocationSelection(selectedLocation);
+    if (parsed.x && parsed.y) {
+      setAddParams(prev => ({
+        ...prev,
+        coordX: parsed.x,
+        coordY: parsed.y
+      }));
+    }
+  };
+
+  // Обработчик выбора локации отправления
+  const handleFromLocationSelect = (selectedLocation) => {
+    setSelectedFromLocation(selectedLocation || "");
+    const parsed = parseLocationSelection(selectedLocation);
+    setAddParams(prev => ({
+      ...prev,
+      fromX: parsed.x,
+      fromY: parsed.y,
+      fromName: parsed.name
+    }));
+  };
+
+  // Обработчик выбора локации назначения
+  const handleToLocationSelect = (selectedLocation) => {
+    setSelectedToLocation(selectedLocation || "");
+    const parsed = parseLocationSelection(selectedLocation);
+    setAddParams(prev => ({
+      ...prev,
+      toX: parsed.x,
+      toY: parsed.y,
+      toName: parsed.name
+    }));
+  };
+
+  // Обработчики изменения полей - очищают автокомплит если изменились координаты
+  const handleCoordFieldChange = (field, value) => {
+    setAddParams(prev => ({...prev, [field]: value}));
+    // Очищаем автокомплит если координаты изменились
+    if (field === 'coordX' || field === 'coordY') {
+      setSelectedRouteLocation("");
+    }
+  };
+
+  const handleFromFieldChange = (field, value) => {
+    setAddParams(prev => ({...prev, [field]: value}));
+    // Очищаем автокомплит если координаты или название изменились
+    if (field === 'fromX' || field === 'fromY' || field === 'fromName') {
+      setSelectedFromLocation("");
+    }
+  };
+
+  const handleToFieldChange = (field, value) => {
+    setAddParams(prev => ({...prev, [field]: value}));
+    // Очищаем автокомплит если координаты или название изменились
+    if (field === 'toX' || field === 'toY' || field === 'toName') {
+      setSelectedToLocation("");
     }
   };
 
@@ -151,6 +299,11 @@ function SpecialOperations() {
         routeName: "", coordX: "", coordY: "", fromX: "", fromY: "", fromName: "",
         toX: "", toY: "", toName: "", distance: "", rating: ""
       });
+      
+      // Очищаем автокомплиты
+      setSelectedRouteLocation("");
+      setSelectedFromLocation("");
+      setSelectedToLocation("");
       
       alert('Маршрут успешно добавлен!');
     } catch (err) {
@@ -223,7 +376,7 @@ function SpecialOperations() {
             
             {errors.maxName && <Alert severity="error" sx={{ mt: 2 }}>{errors.maxName}</Alert>}
             
-            {maxNameResult && (
+            {maxNameResult && maxNameResult.id && (
               <Card sx={{ mt: 2 }}>
                 <CardContent>
                   <Typography variant="h6">{maxNameResult.name}</Typography>
@@ -232,6 +385,12 @@ function SpecialOperations() {
                   <Typography>Рейтинг: {maxNameResult.rating}</Typography>
                 </CardContent>
               </Card>
+            )}
+            
+            {!maxNameResult && !errors.maxName && !loading.maxName && (
+              <Alert severity="info" sx={{ mt: 2 }}>
+                Нажмите "Выполнить" для поиска маршрута с максимальным именем
+              </Alert>
             )}
           </Box>
         </AccordionDetails>
@@ -331,19 +490,37 @@ function SpecialOperations() {
           <Box>
             <Grid container spacing={2}>
               <Grid item xs={12} sm={4}>
-                <TextField
-                  label="Локация отправления"
+                <Autocomplete
+                  options={allLocations}
                   value={betweenParams.from}
-                  onChange={(e) => setBetweenParams(prev => ({...prev, from: e.target.value}))}
-                  fullWidth
+                  onChange={(event, newValue) => {
+                    setBetweenParams(prev => ({...prev, from: newValue || ""}));
+                  }}
+                  renderInput={(params) => (
+                    <TextField
+                      {...params}
+                      label="Локация отправления"
+                      placeholder="Выберите локацию отправления"
+                      fullWidth
+                    />
+                  )}
                 />
               </Grid>
               <Grid item xs={12} sm={4}>
-                <TextField
-                  label="Локация назначения"
+                <Autocomplete
+                  options={allLocations}
                   value={betweenParams.to}
-                  onChange={(e) => setBetweenParams(prev => ({...prev, to: e.target.value}))}
-                  fullWidth
+                  onChange={(event, newValue) => {
+                    setBetweenParams(prev => ({...prev, to: newValue || ""}));
+                  }}
+                  renderInput={(params) => (
+                    <TextField
+                      {...params}
+                      label="Локация назначения"
+                      placeholder="Выберите локацию назначения"
+                      fullWidth
+                    />
+                  )}
                 />
               </Grid>
               <Grid item xs={12} sm={4}>
@@ -381,6 +558,12 @@ function SpecialOperations() {
                 {renderRouteTable(betweenResult)}
               </Box>
             )}
+            
+            {betweenResult.length === 0 && !errors.between && !loading.between && betweenParams.from && betweenParams.to && (
+              <Alert severity="info" sx={{ mt: 2 }}>
+                Маршруты между указанными локациями не найдены
+              </Alert>
+            )}
           </Box>
         </AccordionDetails>
       </Accordion>
@@ -392,125 +575,220 @@ function SpecialOperations() {
         </AccordionSummary>
         <AccordionDetails>
           <Box>
-            <Grid container spacing={2}>
-              <Grid item xs={12} sm={6}>
+            {/* Основная информация */}
+            <Typography variant="h6" sx={{ mb: 2, fontWeight: 'bold', color: 'primary.main' }}>
+              📍 Основная информация
+            </Typography>
+            
+            <Grid container spacing={2} sx={{ mb: 3 }}>
+              <Grid item xs={12}>
                 <TextField
-                  label="Название маршрута *"
+                  label="Название маршрута"
                   value={addParams.routeName}
                   onChange={(e) => setAddParams(prev => ({...prev, routeName: e.target.value}))}
                   fullWidth
+                  required
                 />
               </Grid>
-              <Grid item xs={12} sm={3}>
+              
+              <Grid item xs={12} sm={6}>
                 <TextField
-                  label="Расстояние *"
+                  label="Расстояние"
                   type="number"
                   value={addParams.distance}
                   onChange={(e) => setAddParams(prev => ({...prev, distance: e.target.value}))}
                   fullWidth
+                  required
                   inputProps={{ min: 2 }}
+                  helperText="Минимум 2"
                 />
               </Grid>
-              <Grid item xs={12} sm={3}>
+              
+              <Grid item xs={12} sm={6}>
                 <TextField
-                  label="Рейтинг *"
+                  label="Рейтинг"
                   type="number"
                   value={addParams.rating}
                   onChange={(e) => setAddParams(prev => ({...prev, rating: e.target.value}))}
                   fullWidth
+                  required
                   inputProps={{ min: 1, max: 5 }}
+                  helperText="От 1 до 5"
+                />
+              </Grid>
+            </Grid>
+
+            {/* Координаты маршрута */}
+            <Typography variant="h6" sx={{ mb: 2, fontWeight: 'bold', color: 'primary.main' }}>
+              🗺️ Координаты маршрута
+            </Typography>
+            
+            <Grid container spacing={2} sx={{ mb: 3 }}>
+              <Grid item xs={12}>
+                <Autocomplete
+                  options={allLocations}
+                  value={selectedRouteLocation}
+                  onChange={(event, newValue) => handleRouteLocationSelect(newValue)}
+                  renderInput={(params) => (
+                    <TextField
+                      {...params}
+                      label="Выбрать координаты из существующих локаций (необязательно)"
+                      placeholder="Выберите локацию для копирования координат"
+                      fullWidth
+                    />
+                  )}
+                  sx={{ mb: 2 }}
                 />
               </Grid>
               
-              <Grid item xs={12}><Typography variant="subtitle1">Координаты маршрута</Typography></Grid>
               <Grid item xs={12} sm={6}>
                 <TextField
-                  label="X координата *"
+                  label="X координата"
                   type="number"
                   value={addParams.coordX}
-                  onChange={(e) => setAddParams(prev => ({...prev, coordX: e.target.value}))}
+                  onChange={(e) => handleCoordFieldChange('coordX', e.target.value)}
                   fullWidth
+                  required
                 />
               </Grid>
+              
               <Grid item xs={12} sm={6}>
                 <TextField
-                  label="Y координата *"
+                  label="Y координата"
                   type="number"
                   value={addParams.coordY}
-                  onChange={(e) => setAddParams(prev => ({...prev, coordY: e.target.value}))}
+                  onChange={(e) => handleCoordFieldChange('coordY', e.target.value)}
                   fullWidth
+                  required
                   inputProps={{ max: 807 }}
+                  helperText="Максимум 807"
                 />
-              </Grid>
-
-              <Grid item xs={12}><Typography variant="subtitle1">Точка отправления</Typography></Grid>
-              <Grid item xs={12} sm={4}>
-                <TextField
-                  label="X *"
-                  type="number"
-                  value={addParams.fromX}
-                  onChange={(e) => setAddParams(prev => ({...prev, fromX: e.target.value}))}
-                  fullWidth
-                />
-              </Grid>
-              <Grid item xs={12} sm={4}>
-                <TextField
-                  label="Y *"
-                  type="number"
-                  value={addParams.fromY}
-                  onChange={(e) => setAddParams(prev => ({...prev, fromY: e.target.value}))}
-                  fullWidth
-                />
-              </Grid>
-              <Grid item xs={12} sm={4}>
-                <TextField
-                  label="Название"
-                  value={addParams.fromName}
-                  onChange={(e) => setAddParams(prev => ({...prev, fromName: e.target.value}))}
-                  fullWidth
-                />
-              </Grid>
-
-              <Grid item xs={12}><Typography variant="subtitle1">Точка назначения</Typography></Grid>
-              <Grid item xs={12} sm={4}>
-                <TextField
-                  label="X *"
-                  type="number"
-                  value={addParams.toX}
-                  onChange={(e) => setAddParams(prev => ({...prev, toX: e.target.value}))}
-                  fullWidth
-                />
-              </Grid>
-              <Grid item xs={12} sm={4}>
-                <TextField
-                  label="Y *"
-                  type="number"
-                  value={addParams.toY}
-                  onChange={(e) => setAddParams(prev => ({...prev, toY: e.target.value}))}
-                  fullWidth
-                />
-              </Grid>
-              <Grid item xs={12} sm={4}>
-                <TextField
-                  label="Название"
-                  value={addParams.toName}
-                  onChange={(e) => setAddParams(prev => ({...prev, toName: e.target.value}))}
-                  fullWidth
-                />
-              </Grid>
-
-              <Grid item xs={12}>
-                <Button 
-                  variant="contained" 
-                  onClick={handleAddBetweenLocations}
-                  startIcon={<PlayArrowIcon />}
-                  disabled={loading.add}
-                  size="large"
-                >
-                  Добавить маршрут
-                </Button>
               </Grid>
             </Grid>
+
+            {/* Точка отправления */}
+            <Typography variant="h6" sx={{ mb: 2, fontWeight: 'bold', color: 'primary.main' }}>
+              🚀 Точка отправления
+            </Typography>
+            
+            <Grid container spacing={2} sx={{ mb: 3 }}>
+              <Grid item xs={12}>
+                <Autocomplete
+                  options={allLocations}
+                  value={selectedFromLocation}
+                  onChange={(event, newValue) => handleFromLocationSelect(newValue)}
+                  renderInput={(params) => (
+                    <TextField
+                      {...params}
+                      label="Выбрать существующую локацию (необязательно)"
+                      placeholder="Выберите локацию или введите координаты вручную"
+                      fullWidth
+                    />
+                  )}
+                  sx={{ mb: 2 }}
+                />
+              </Grid>
+              
+              <Grid item xs={12} sm={4}>
+                <TextField
+                  label="X"
+                  type="number"
+                  value={addParams.fromX}
+                  onChange={(e) => handleFromFieldChange('fromX', e.target.value)}
+                  fullWidth
+                  required
+                />
+              </Grid>
+              
+              <Grid item xs={12} sm={4}>
+                <TextField
+                  label="Y"
+                  type="number"
+                  value={addParams.fromY}
+                  onChange={(e) => handleFromFieldChange('fromY', e.target.value)}
+                  fullWidth
+                  required
+                />
+              </Grid>
+              
+              <Grid item xs={12} sm={4}>
+                <TextField
+                  label="Название (необязательно)"
+                  value={addParams.fromName}
+                  onChange={(e) => handleFromFieldChange('fromName', e.target.value)}
+                  fullWidth
+                />
+              </Grid>
+            </Grid>
+
+            {/* Точка назначения */}
+            <Typography variant="h6" sx={{ mb: 2, fontWeight: 'bold', color: 'primary.main' }}>
+              🎯 Точка назначения
+            </Typography>
+            
+            <Grid container spacing={2} sx={{ mb: 3 }}>
+              <Grid item xs={12}>
+                <Autocomplete
+                  options={allLocations}
+                  value={selectedToLocation}
+                  onChange={(event, newValue) => handleToLocationSelect(newValue)}
+                  renderInput={(params) => (
+                    <TextField
+                      {...params}
+                      label="Выбрать существующую локацию (необязательно)"
+                      placeholder="Выберите локацию или введите координаты вручную"
+                      fullWidth
+                    />
+                  )}
+                  sx={{ mb: 2 }}
+                />
+              </Grid>
+              
+              <Grid item xs={12} sm={4}>
+                <TextField
+                  label="X"
+                  type="number"
+                  value={addParams.toX}
+                  onChange={(e) => handleToFieldChange('toX', e.target.value)}
+                  fullWidth
+                  required
+                />
+              </Grid>
+              
+              <Grid item xs={12} sm={4}>
+                <TextField
+                  label="Y"
+                  type="number"
+                  value={addParams.toY}
+                  onChange={(e) => handleToFieldChange('toY', e.target.value)}
+                  fullWidth
+                  required
+                />
+              </Grid>
+              
+              <Grid item xs={12} sm={4}>
+                <TextField
+                  label="Название (необязательно)"
+                  value={addParams.toName}
+                  onChange={(e) => handleToFieldChange('toName', e.target.value)}
+                  fullWidth
+                />
+              </Grid>
+            </Grid>
+
+            {/* Кнопка добавления */}
+            <Box sx={{ display: 'flex', justifyContent: 'center', mt: 3 }}>
+              <Button
+                variant="contained"
+                onClick={handleAddBetweenLocations}
+                startIcon={<PlayArrowIcon />}
+                disabled={loading.add}
+                size="large"
+                sx={{ minWidth: 200 }}
+              >
+                Добавить маршрут
+              </Button>
+            </Box>
             
             {errors.add && <Alert severity="error" sx={{ mt: 2 }}>{errors.add}</Alert>}
           </Box>

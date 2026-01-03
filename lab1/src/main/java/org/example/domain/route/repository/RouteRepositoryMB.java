@@ -130,53 +130,238 @@ public class RouteRepositoryMB {
         }
     }
 
-    // Специальные операции согласно ТЗ (PostgreSQL функции)
+    // Специальные операции согласно ТЗ
     
-    @SuppressWarnings("unchecked")
     public Route findRouteWithMaxName() {
-        List<Route> results = em.createNativeQuery("SELECT * FROM get_route_with_max_name()", "RouteMapping")
-                .getResultList();
-        return results.isEmpty() ? null : (Route) results.get(0);
+        List<Route> results = em.createQuery(
+            "SELECT r FROM Route r WHERE r.name = (SELECT MAX(r2.name) FROM Route r2) ORDER BY r.id",
+            Route.class
+        ).setMaxResults(1).getResultList();
+        
+        return results.isEmpty() ? null : results.get(0);
     }
 
     public long countRoutesWithRatingLessThan(Long ratingThreshold) {
-        return ((Number) em.createNativeQuery("SELECT count_routes_with_rating_less_than(?)")
-                .setParameter(1, ratingThreshold)
-                .getSingleResult()).longValue();
+        return em.createQuery("SELECT COUNT(r) FROM Route r WHERE r.rating < :threshold", Long.class)
+                .setParameter("threshold", ratingThreshold)
+                .getSingleResult();
     }
 
-    @SuppressWarnings("unchecked")
     public List<Route> findRoutesWithRatingGreaterThan(Long ratingThreshold) {
-        return em.createNativeQuery("SELECT * FROM get_routes_with_rating_greater_than(?)", "RouteMapping")
-                .setParameter(1, ratingThreshold)
+        return em.createQuery("SELECT r FROM Route r WHERE r.rating > :threshold ORDER BY r.rating DESC", Route.class)
+                .setParameter("threshold", ratingThreshold)
                 .getResultList();
     }
 
-    @SuppressWarnings("unchecked")
     public List<Route> findRoutesBetweenLocations(String fromLocationName, String toLocationName, String sortBy) {
-        return em.createNativeQuery("SELECT * FROM find_routes_between_locations(?, ?, ?)", "RouteMapping")
-                .setParameter(1, fromLocationName)
-                .setParameter(2, toLocationName)
-                .setParameter(3, sortBy != null ? sortBy : "name")
-                .getResultList();
+        StringBuilder jpql = new StringBuilder("SELECT r FROM Route r WHERE 1=1");
+        
+        if (fromLocationName != null && !fromLocationName.trim().isEmpty()) {
+            String fromLocation = fromLocationName.trim();
+            
+            // Проверяем, является ли это координатами в формате "(x, y)"
+            if (fromLocation.startsWith("(") && fromLocation.endsWith(")")) {
+                // Извлекаем координаты из формата "(x, y)"
+                String coords = fromLocation.substring(1, fromLocation.length() - 1);
+                String[] parts = coords.split(",");
+                if (parts.length == 2) {
+                    try {
+                        Double x = Double.parseDouble(parts[0].trim());
+                        Double y = Double.parseDouble(parts[1].trim());
+                        jpql.append(" AND r.from.x = :fromX AND r.from.y = :fromY");
+                    } catch (NumberFormatException e) {
+                        // Если не удается распарсить, ищем по названию
+                        jpql.append(" AND r.from.name = :fromName");
+                    }
+                } else {
+                    jpql.append(" AND r.from.name = :fromName");
+                }
+            } else {
+                jpql.append(" AND r.from.name = :fromName");
+            }
+        }
+        
+        if (toLocationName != null && !toLocationName.trim().isEmpty()) {
+            String toLocation = toLocationName.trim();
+            
+            // Проверяем, является ли это координатами в формате "(x, y)"
+            if (toLocation.startsWith("(") && toLocation.endsWith(")")) {
+                // Извлекаем координаты из формата "(x, y)"
+                String coords = toLocation.substring(1, toLocation.length() - 1);
+                String[] parts = coords.split(",");
+                if (parts.length == 2) {
+                    try {
+                        Double x = Double.parseDouble(parts[0].trim());
+                        Double y = Double.parseDouble(parts[1].trim());
+                        jpql.append(" AND r.to.x = :toX AND r.to.y = :toY");
+                    } catch (NumberFormatException e) {
+                        // Если не удается распарсить, ищем по названию
+                        jpql.append(" AND r.to.name = :toName");
+                    }
+                } else {
+                    jpql.append(" AND r.to.name = :toName");
+                }
+            } else {
+                jpql.append(" AND r.to.name = :toName");
+            }
+        }
+        
+        // Добавляем сортировку
+        switch (sortBy != null ? sortBy.toLowerCase() : "name") {
+            case "distance":
+                jpql.append(" ORDER BY r.distance");
+                break;
+            case "rating":
+                jpql.append(" ORDER BY r.rating DESC");
+                break;
+            case "creation_date":
+                jpql.append(" ORDER BY r.creationDate DESC");
+                break;
+            default:
+                jpql.append(" ORDER BY r.name");
+        }
+        
+        var query = em.createQuery(jpql.toString(), Route.class);
+        
+        // Устанавливаем параметры для FROM локации
+        if (fromLocationName != null && !fromLocationName.trim().isEmpty()) {
+            String fromLocation = fromLocationName.trim();
+            
+            if (fromLocation.startsWith("(") && fromLocation.endsWith(")")) {
+                String coords = fromLocation.substring(1, fromLocation.length() - 1);
+                String[] parts = coords.split(",");
+                if (parts.length == 2) {
+                    try {
+                        Double x = Double.parseDouble(parts[0].trim());
+                        Double y = Double.parseDouble(parts[1].trim());
+                        query.setParameter("fromX", x);
+                        query.setParameter("fromY", y);
+                    } catch (NumberFormatException e) {
+                        query.setParameter("fromName", fromLocation);
+                    }
+                } else {
+                    query.setParameter("fromName", fromLocation);
+                }
+            } else {
+                query.setParameter("fromName", fromLocation);
+            }
+        }
+        
+        // Устанавливаем параметры для TO локации
+        if (toLocationName != null && !toLocationName.trim().isEmpty()) {
+            String toLocation = toLocationName.trim();
+            
+            if (toLocation.startsWith("(") && toLocation.endsWith(")")) {
+                String coords = toLocation.substring(1, toLocation.length() - 1);
+                String[] parts = coords.split(",");
+                if (parts.length == 2) {
+                    try {
+                        Double x = Double.parseDouble(parts[0].trim());
+                        Double y = Double.parseDouble(parts[1].trim());
+                        query.setParameter("toX", x);
+                        query.setParameter("toY", y);
+                    } catch (NumberFormatException e) {
+                        query.setParameter("toName", toLocation);
+                    }
+                } else {
+                    query.setParameter("toName", toLocation);
+                }
+            } else {
+                query.setParameter("toName", toLocation);
+            }
+        }
+        
+        return query.getResultList();
+    }
+    
+    public List<Route> findRoutesBetweenLocations(String fromLocationName, String toLocationName,
+                                                 Double fromX, Double fromY, Double toX, Double toY, String sortBy) {
+        StringBuilder jpql = new StringBuilder("SELECT r FROM Route r WHERE 1=1");
+        
+        // Поиск по локации FROM
+        if (fromX != null && fromY != null) {
+            jpql.append(" AND r.from.x = :fromX AND r.from.y = :fromY");
+            if (fromLocationName != null && !fromLocationName.trim().isEmpty()) {
+                if ("без названия".equalsIgnoreCase(fromLocationName.trim())) {
+                    jpql.append(" AND (r.from.name IS NULL OR r.from.name = '')");
+                } else {
+                    jpql.append(" AND r.from.name = :fromName");
+                }
+            }
+        } else if (fromLocationName != null && !fromLocationName.trim().isEmpty()) {
+            if ("без названия".equalsIgnoreCase(fromLocationName.trim())) {
+                jpql.append(" AND (r.from.name IS NULL OR r.from.name = '')");
+            } else {
+                jpql.append(" AND r.from.name = :fromName");
+            }
+        }
+        
+        // Поиск по локации TO
+        if (toX != null && toY != null) {
+            jpql.append(" AND r.to.x = :toX AND r.to.y = :toY");
+            if (toLocationName != null && !toLocationName.trim().isEmpty()) {
+                if ("без названия".equalsIgnoreCase(toLocationName.trim())) {
+                    jpql.append(" AND (r.to.name IS NULL OR r.to.name = '')");
+                } else {
+                    jpql.append(" AND r.to.name = :toName");
+                }
+            }
+        } else if (toLocationName != null && !toLocationName.trim().isEmpty()) {
+            if ("без названия".equalsIgnoreCase(toLocationName.trim())) {
+                jpql.append(" AND (r.to.name IS NULL OR r.to.name = '')");
+            } else {
+                jpql.append(" AND r.to.name = :toName");
+            }
+        }
+        
+        // Добавляем сортировку
+        switch (sortBy != null ? sortBy.toLowerCase() : "name") {
+            case "distance":
+                jpql.append(" ORDER BY r.distance");
+                break;
+            case "rating":
+                jpql.append(" ORDER BY r.rating DESC");
+                break;
+            case "creation_date":
+                jpql.append(" ORDER BY r.creationDate DESC");
+                break;
+            default:
+                jpql.append(" ORDER BY r.name");
+        }
+        
+        var query = em.createQuery(jpql.toString(), Route.class);
+        
+        // Устанавливаем параметры
+        if (fromX != null && fromY != null) {
+            query.setParameter("fromX", fromX);
+            query.setParameter("fromY", fromY);
+        }
+        
+        if (toX != null && toY != null) {
+            query.setParameter("toX", toX);
+            query.setParameter("toY", toY);
+        }
+        
+        if (fromLocationName != null && !fromLocationName.trim().isEmpty() &&
+            !"без названия".equalsIgnoreCase(fromLocationName.trim())) {
+            query.setParameter("fromName", fromLocationName.trim());
+        }
+        
+        if (toLocationName != null && !toLocationName.trim().isEmpty() &&
+            !"без названия".equalsIgnoreCase(toLocationName.trim())) {
+            query.setParameter("toName", toLocationName.trim());
+        }
+        
+        return query.getResultList();
     }
 
     public Integer addRouteBetweenLocations(String routeName, float coordX, Double coordY,
                                            Double fromX, double fromY, String fromName,
                                            Double toX, double toY, String toName,
                                            Long distance, Long rating) {
-        return ((Number) em.createNativeQuery("SELECT add_route_between_locations(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
-                .setParameter(1, routeName)
-                .setParameter(2, coordX)
-                .setParameter(3, coordY)
-                .setParameter(4, fromX)
-                .setParameter(5, fromY)
-                .setParameter(6, fromName)
-                .setParameter(7, toX)
-                .setParameter(8, toY)
-                .setParameter(9, toName)
-                .setParameter(10, distance)
-                .setParameter(11, rating)
-                .getSingleResult()).intValue();
+        // Используем новую структуру с отдельными таблицами
+        // Этот метод должен использовать сервисы для создания координат и локаций
+        // Но для совместимости сделаем простую заглушку
+        throw new UnsupportedOperationException("Use RouteService.createRoute() instead for proper entity management");
     }
 }
