@@ -16,7 +16,6 @@ function App() {
   const [totalPages, setTotalPages] = useState(0);
   const [totalElements, setTotalElements] = useState(0);
   const [currentPage, setCurrentPage] = useState(0);
-  const [cursorInfo, setCursorInfo] = useState(null); // Cursor-based пагинация (для мониторинга)
   const [filterName, setFilterName] = useState("");
   const [sortBy, setSortBy] = useState("id");
   const [sortDirection, setSortDirection] = useState("asc");
@@ -29,49 +28,36 @@ function App() {
 
   const pageSize = 10; // размер страницы
 
-  // Загрузка маршрутов с cursor-based пагинацией
-  const loadRoutes = useCallback(async (cursor = null, name = filterName, sort = sortBy, direction = sortDirection, navigateDirection = "next") => {
+  // Загрузка маршрутов с простой пагинацией
+  const loadRoutes = useCallback(async (page = currentPage, name = filterName, sort = sortBy, direction = sortDirection) => {
     setLoading(true);
     setError(null);
     try {
       const params = {
+        page: page,
         size: pageSize,
         sortBy: sort,
-        sortDirection: direction,
-        direction: navigateDirection
+        sortDirection: direction
       };
       
       if (name && name.trim()) {
         params.nameFilter = name.trim();
       }
       
-      if (cursor) {
-        params.cursor = cursor;
-      }
-      
-      const response = await api.get("/routes/cursor", { params });
+      const response = await api.get("/routes/paginated", { params });
       
       setRoutes(response.data.content || []);
-      setTotalElements(response.data.totalCount || 0);
-      setTotalPages(Math.ceil((response.data.totalCount || 0) / pageSize)); // Приблизительно для UI
+      setTotalElements(response.data.totalElements || 0);
+      setTotalPages(response.data.totalPages || 0);
       setSortBy(sort);
       setSortDirection(direction);
       setLastUpdateTime(new Date().toLocaleTimeString("ru-RU"));
       
-      // Сохраняем cursor информацию для навигации
-      setCursorInfo({
-        next: response.data.nextCursor,
-        prev: response.data.prevCursor,
-        hasNext: response.data.hasNext,
-        hasPrev: response.data.hasPrev
-      });
-      
-      console.debug('🚀 Cursor pagination info:', {
-        hasNext: response.data.hasNext,
-        hasPrev: response.data.hasPrev,
-        totalCount: response.data.totalCount,
-        size: response.data.size,
-        performance: 'Optimized composite cursor'
+      console.debug('🚀 Loaded paginated routes:', {
+        page: page,
+        totalElements: response.data.totalElements,
+        totalPages: response.data.totalPages,
+        performance: 'Simple offset/limit pagination'
       });
       
     } catch (err) {
@@ -80,11 +66,10 @@ function App() {
       setRoutes([]);
       setTotalPages(0);
       setTotalElements(0);
-      setCursorInfo(null);
     } finally {
       setLoading(false);
     }
-  }, [filterName, sortBy, sortDirection, pageSize]);
+  }, [currentPage, filterName, sortBy, sortDirection, pageSize]);
 
   // "Тихое" обновление данных для автосинхронизации
   const silentRefresh = useCallback(async () => {
@@ -92,6 +77,7 @@ function App() {
     
     try {
       const params = {
+        page: currentPage,
         size: pageSize,
         sortBy: sortBy,
         sortDirection: sortDirection
@@ -100,24 +86,16 @@ function App() {
         params.nameFilter = filterName.trim();
       }
       
-      const response = await api.get("/routes/cursor", { params });
+      const response = await api.get("/routes/paginated", { params });
       const newRoutes = response.data.content || [];
-      const newTotalElements = response.data.totalCount || 0;
+      const newTotalElements = response.data.totalElements || 0;
       
       // Проверяем изменения
       if (JSON.stringify(newRoutes) !== JSON.stringify(routes) || newTotalElements !== totalElements) {
         setRoutes(newRoutes);
-        setTotalPages(Math.ceil(newTotalElements / pageSize));
+        setTotalPages(response.data.totalPages || 0);
         setTotalElements(newTotalElements);
         setLastUpdateTime(new Date().toLocaleTimeString("ru-RU"));
-        
-        // Обновляем cursor информацию
-        setCursorInfo({
-          next: response.data.nextCursor,
-          prev: response.data.prevCursor,
-          hasNext: response.data.hasNext,
-          hasPrev: response.data.hasPrev
-        });
         
         // Показываем уведомление о обновлении
         const changeCount = Math.abs(newTotalElements - totalElements);
@@ -131,7 +109,7 @@ function App() {
       console.error("Ошибка автоматического обновления:", err);
       // Не показываем ошибку пользователю для тихого обновления
     }
-  }, [activeSection, autoRefreshEnabled, pageSize, sortBy, sortDirection, filterName, routes, totalElements]);
+  }, [activeSection, autoRefreshEnabled, currentPage, pageSize, sortBy, sortDirection, filterName, routes, totalElements]);
 
   // Автоматическое обновление данных каждые 30 секунд
   useAutoRefresh(silentRefresh, 30000, [activeSection, autoRefreshEnabled]);
@@ -139,44 +117,22 @@ function App() {
   // Загрузка при монтировании компонента и при переключении на главную
   useEffect(() => {
     if (activeSection === 'main') {
-      loadRoutes(null, "", "id", "asc", "next");
+      loadRoutes(0, "", "id", "asc");
       setCurrentPage(0);
     }
   }, [activeSection]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Обработка cursor navigation
-  const handleCursorNavigation = (direction) => {
-    if (!cursorInfo) return;
-    
-    if (direction === "next" && cursorInfo.hasNext && cursorInfo.next) {
-      loadRoutes(cursorInfo.next, filterName, sortBy, sortDirection, "next");
-      setCurrentPage(prev => prev + 1);
-    } else if (direction === "prev" && cursorInfo.hasPrev && cursorInfo.prev) {
-      loadRoutes(cursorInfo.prev, filterName, sortBy, sortDirection, "prev");
-      setCurrentPage(prev => Math.max(0, prev - 1));
-    }
-  };
-
-  // Обработка изменения страницы (эмуляция через cursor)
+  // Обработка изменения страницы
   const handlePageChange = (page) => {
-    if (page === 0) {
-      // Первая страница
-      loadRoutes(null, filterName, sortBy, sortDirection, "next");
-      setCurrentPage(0);
-    } else if (page > currentPage) {
-      // Вперед
-      handleCursorNavigation("next");
-    } else {
-      // Назад
-      handleCursorNavigation("prev");
-    }
+    setCurrentPage(page);
+    loadRoutes(page, filterName, sortBy, sortDirection);
   };
 
   // Обработка изменения фильтра
   const handleFilterChange = (name) => {
     setFilterName(name);
     setCurrentPage(0);
-    loadRoutes(null, name, sortBy, sortDirection, "next");
+    loadRoutes(0, name, sortBy, sortDirection);
   };
 
   // Обработка изменения сортировки
@@ -184,7 +140,7 @@ function App() {
     setSortBy(column);
     setSortDirection(direction);
     setCurrentPage(0);
-    loadRoutes(null, filterName, column, direction, "next");
+    loadRoutes(0, filterName, column, direction);
   };
 
   // Удаление маршрута
@@ -197,9 +153,8 @@ function App() {
         const newTotalPages = Math.ceil(newTotalElements / pageSize);
         const pageToLoad = currentPage >= newTotalPages ? Math.max(0, newTotalPages - 1) : currentPage;
         
-        // После удаления перезагружаем первую страницу
-        loadRoutes(null, filterName, sortBy, sortDirection, "next");
-        setCurrentPage(0);
+        setCurrentPage(pageToLoad);
+        loadRoutes(pageToLoad, filterName, sortBy, sortDirection);
       } catch (err) {
         console.error("Ошибка удаления маршрута:", err);
         setError("Не удалось удалить маршрут. Попробуйте еще раз.");
@@ -232,8 +187,7 @@ function App() {
       }
       
       // Перезагрузка данных таблицы
-      loadRoutes(null, filterName, sortBy, sortDirection, "next");
-      setCurrentPage(0);
+      loadRoutes(currentPage, filterName, sortBy, sortDirection);
       
       // Обновление данных формы (координаты и локации)
       if (refreshFormData) {
@@ -345,7 +299,6 @@ function App() {
                   onSortChange={handleSortChange}
                   onEdit={(route) => setEditing(route)}
                   onDelete={handleDelete}
-                  cursorInfo={cursorInfo}
                 />
               )}
 

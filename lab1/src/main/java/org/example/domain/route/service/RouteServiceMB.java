@@ -208,12 +208,27 @@ public class RouteServiceMB {
     }
 
     /**
-     * Безопасный метод findAll для совместимости
+     * Простой метод findAll без пагинации
      */
     public List<RouteDto> findAll() {
-        log.info("Using safe findAll() with cursor-based pagination");
-        // Возвращаем первую страницу через cursor для безопасности
-        return findFirstPage(100, null, "id", "asc").routes();
+        log.info("Finding all routes");
+        List<Route> routes = routeRepository.findAll();
+        return routes.stream()
+                .map(RouteMapper::toDto)
+                .collect(Collectors.toList());
+    }
+
+    /**
+     * Простая offset/limit пагинация (заменяет cursor пагинацию)
+     */
+    public List<RouteDto> findPaginated(int page, int size, String nameFilter, String sortBy, String sortDirection) {
+        log.info("Finding paginated routes: page={}, size={}, filter='{}', sortBy={}, direction={}",
+                page, size, nameFilter, sortBy, sortDirection);
+        
+        List<Route> routes = routeRepository.findPaginated(page, size, nameFilter, sortBy, sortDirection);
+        return routes.stream()
+                .map(RouteMapper::toDto)
+                .collect(Collectors.toList());
     }
 
     public long countAll() {

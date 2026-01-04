@@ -1,10 +1,10 @@
 import React, { useState } from "react";
 import {
   Table, TableHead, TableRow, TableCell, TableBody, IconButton,
-  TextField, Box, Pagination, Paper, TableContainer,
+  TextField, Box, Paper, TableContainer,
   Typography, Chip, Grid, InputAdornment, Dialog, DialogTitle,
   DialogContent, DialogActions, Button, Autocomplete, Alert,
-  Tooltip
+  Tooltip, Pagination, Stack
 } from "@mui/material";
 import EditIcon from "@mui/icons-material/Edit";
 import DeleteIcon from "@mui/icons-material/Delete";
@@ -17,8 +17,8 @@ import api from "../api";
 
 function RoutesTable({
   routes,
-  totalPages,
   totalElements,
+  totalPages,
   currentPage,
   onPageChange,
   onFilterChange,
@@ -27,8 +27,7 @@ function RoutesTable({
   sortBy,
   sortDirection,
   onEdit,
-  onDelete,
-  cursorInfo // Новый пропс для отображения cursor информации
+  onDelete
 }) {
   const [localFilter, setLocalFilter] = useState(filterName || "");
   const [deleteDialog, setDeleteDialog] = useState({ open: false, route: null, message: "" });
@@ -375,18 +374,24 @@ function RoutesTable({
           </TableBody>
         </Table>
       </TableContainer>
-
+      
+      {/* Пагинация */}
       {totalPages > 1 && (
-        <Box sx={{ display: 'flex', justifyContent: 'center', p: 2 }}>
-          <Pagination
-            count={totalPages}
-            page={currentPage + 1}
-            onChange={(event, value) => onPageChange(value - 1)}
-            color="primary"
-            size="large"
-            showFirstButton
-            showLastButton
-          />
+        <Box sx={{ p: 2, display: 'flex', justifyContent: 'center' }}>
+          <Stack spacing={2} alignItems="center">
+            <Pagination
+              count={totalPages}
+              page={currentPage + 1} // MUI использует 1-based индексы
+              onChange={(event, page) => onPageChange(page - 1)} // Преобразуем в 0-based
+              color="primary"
+              showFirstButton
+              showLastButton
+            />
+            <Typography variant="caption" color="textSecondary">
+              Страница {currentPage + 1} из {totalPages}
+              ({routes.length} из {totalElements} элементов)
+            </Typography>
+          </Stack>
         </Box>
       )}
 

@@ -49,91 +49,38 @@ public class RouteResource {
     }
 
     @GET
-    @Path("/cursor")
-    public Response getCursorPaginatedRoutes(
-            @QueryParam("size") @DefaultValue("10") int size,
-            @QueryParam("nameFilter") String nameFilter,
-            @QueryParam("sortBy") @DefaultValue("id") String sortBy,
-            @QueryParam("sortDirection") @DefaultValue("asc") String sortDirection,
-            @QueryParam("cursor") String cursor,
-            @QueryParam("direction") @DefaultValue("next") String direction) {
-        
-        try {
-            RouteCursorPageDto result;
-            
-            if (cursor == null || cursor.trim().isEmpty()) {
-                // Первая страница
-                log.info("🚀 First page: size={}, filter='{}', sortBy={}, direction={}",
-                        size, nameFilter, sortBy, sortDirection);
-                result = routeService.findFirstPage(size, nameFilter, sortBy, sortDirection);
-            } else {
-                // Навигация по композитному cursor
-                log.info("🔄 {} page: cursor='{}...', size={}, filter='{}'",
-                        direction, cursor.substring(0, Math.min(cursor.length(), 20)), size, nameFilter);
-                
-                if ("prev".equals(direction)) {
-                    result = routeService.findPrevPage(cursor, size, nameFilter);
-                } else {
-                    result = routeService.findNextPage(cursor, size, nameFilter);
-                }
-            }
-            
-            // Чистый cursor-based API response
-            Map<String, Object> response = new HashMap<>();
-            response.put("content", result.routes());
-            response.put("size", result.size());
-            response.put("totalCount", result.totalCount());
-            response.put("hasNext", result.hasNext());
-            response.put("hasPrev", result.hasPrev());
-            response.put("nextCursor", result.nextCursor());
-            response.put("prevCursor", result.prevCursor());
-            
-            log.info("✅ Returned {} routes (hasNext={}, hasPrev={})",
-                    result.routes().size(), result.hasNext(), result.hasPrev());
-            
-            return Response.ok(response).build();
-            
-        } catch (IllegalArgumentException e) {
-            log.warn("❌ Invalid cursor, returning first page: {}", e.getMessage());
-            
-            // При невалидном cursor возвращаем первую страницу
-            RouteCursorPageDto fallbackResult = routeService.findFirstPage(size, nameFilter, sortBy, sortDirection);
-            
-            Map<String, Object> response = new HashMap<>();
-            response.put("content", fallbackResult.routes());
-            response.put("size", fallbackResult.size());
-            response.put("totalCount", fallbackResult.totalCount());
-            response.put("hasNext", fallbackResult.hasNext());
-            response.put("hasPrev", false);
-            response.put("nextCursor", fallbackResult.nextCursor());
-            response.put("prevCursor", null);
-            response.put("warning", "Invalid cursor, showing first page");
-            
-            return Response.ok(response).build();
-            
-        } catch (Exception e) {
-            log.error("💥 Cursor pagination error: {}", e.getMessage(), e);
-            return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
-                    .entity(Map.of("error", "Pagination system error: " + e.getMessage()))
-                    .build();
-        }
-    }
-    
-    @GET
     @Path("/paginated")
-    public Response getLegacyPaginatedRoutes(
+    public Response getPaginatedRoutes(
             @QueryParam("page") @DefaultValue("0") int page,
             @QueryParam("size") @DefaultValue("10") int size,
             @QueryParam("nameFilter") String nameFilter,
             @QueryParam("sortBy") @DefaultValue("id") String sortBy,
             @QueryParam("sortDirection") @DefaultValue("asc") String sortDirection) {
         
-        // Перенаправляем на cursor API
-        log.info("🔄 Legacy pagination request redirected to cursor API");
-        return getCursorPaginatedRoutes(size, nameFilter, sortBy, sortDirection, null, "next");
+        try {
+            List<RouteDto> routes = routeService.findPaginated(page, size, nameFilter, sortBy, sortDirection);
+            long totalElements = routeService.countWithFilter(nameFilter);
+            int totalPages = (int) Math.ceil((double) totalElements / size);
+            
+            Map<String, Object> response = new HashMap<>();
+            response.put("content", routes);
+            response.put("page", page);
+            response.put("size", size);
+            response.put("totalElements", totalElements);
+            response.put("totalPages", totalPages);
+            response.put("first", page == 0);
+            response.put("last", page >= totalPages - 1);
+            
+            return Response.ok(response).build();
+            
+        } catch (Exception e) {
+            log.error("Pagination error: {}", e.getMessage(), e);
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+                    .entity(Map.of("error", "Pagination system error: " + e.getMessage()))
+                    .build();
+        }
     }
 
-    // Остальные методы остаются без изменений
     @GET
     @Path("/{id}")
     public RouteDto getById(@PathParam("id") Integer id) {

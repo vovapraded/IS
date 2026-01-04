@@ -26,6 +26,30 @@ public class RouteRepositoryMB {
     }
 
 
+    /**
+     * Простая offset/limit пагинация (заменяет cursor пагинацию)
+     */
+    public List<Route> findPaginated(int page, int size, String nameFilter, String sortBy, String sortDirection) {
+        StringBuilder jpql = new StringBuilder("SELECT r FROM Route r");
+        
+        if (nameFilter != null && !nameFilter.trim().isEmpty()) {
+            jpql.append(" WHERE LOWER(r.name) LIKE LOWER(:nameFilter)");
+        }
+        
+        jpql.append(" ORDER BY ");
+        appendSortClause(jpql, sortBy, sortDirection);
+        
+        var query = em.createQuery(jpql.toString(), Route.class);
+        
+        if (nameFilter != null && !nameFilter.trim().isEmpty()) {
+            query.setParameter("nameFilter", "%" + nameFilter.trim() + "%");
+        }
+        
+        return query.setFirstResult(page * size)
+                   .setMaxResults(size)
+                   .getResultList();
+    }
+
     public long countAll() {
         return em.createQuery("SELECT COUNT(r) FROM Route r", Long.class)
                 .getSingleResult();
