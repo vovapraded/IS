@@ -29,53 +29,62 @@ function App() {
 
   const pageSize = 10; // размер страницы
 
-  // Загрузка маршрутов с пагинацией, фильтрацией и сортировкой
-  const loadRoutes = useCallback(async (page = currentPage, name = filterName, sort = sortBy, direction = sortDirection) => {
+  // Загрузка маршрутов с cursor-based пагинацией
+  const loadRoutes = useCallback(async (cursor = null, name = filterName, sort = sortBy, direction = sortDirection, navigateDirection = "next") => {
     setLoading(true);
     setError(null);
     try {
       const params = {
-        page,
         size: pageSize,
         sortBy: sort,
-        sortDirection: direction
+        sortDirection: direction,
+        direction: navigateDirection
       };
+      
       if (name && name.trim()) {
         params.nameFilter = name.trim();
       }
       
-      const response = await api.get("/routes/paginated", { params });
+      if (cursor) {
+        params.cursor = cursor;
+      }
+      
+      const response = await api.get("/routes/cursor", { params });
       
       setRoutes(response.data.content || []);
-      setTotalPages(response.data.totalPages || 0);
-      setTotalElements(response.data.totalElements || 0);
-      setCurrentPage(page);
+      setTotalElements(response.data.totalCount || 0);
+      setTotalPages(Math.ceil((response.data.totalCount || 0) / pageSize)); // Приблизительно для UI
       setSortBy(sort);
       setSortDirection(direction);
       setLastUpdateTime(new Date().toLocaleTimeString("ru-RU"));
       
-      // Сохраняем cursor информацию для мониторинга и возможных будущих оптимизаций
-      if (response.data.cursor) {
-        setCursorInfo(response.data.cursor);
-        console.debug('🚀 Cursor-based pagination info:', {
-          next: response.data.cursor.next,
-          prev: response.data.cursor.prev,
-          hasNext: response.data.cursor.hasNext,
-          hasPrev: response.data.cursor.hasPrev,
-          page: page,
-          performance: 'Optimized with cursor-based backend'
-        });
-      }
+      // Сохраняем cursor информацию для навигации
+      setCursorInfo({
+        next: response.data.nextCursor,
+        prev: response.data.prevCursor,
+        hasNext: response.data.hasNext,
+        hasPrev: response.data.hasPrev
+      });
+      
+      console.debug('🚀 Cursor pagination info:', {
+        hasNext: response.data.hasNext,
+        hasPrev: response.data.hasPrev,
+        totalCount: response.data.totalCount,
+        size: response.data.size,
+        performance: 'Optimized composite cursor'
+      });
+      
     } catch (err) {
       console.error("Ошибка загрузки маршрутов:", err);
       setError("Не удалось загрузить маршруты. Проверьте соединение с сервером.");
       setRoutes([]);
       setTotalPages(0);
       setTotalElements(0);
+      setCursorInfo(null);
     } finally {
       setLoading(false);
     }
-  }, [currentPage, filterName, sortBy, sortDirection, pageSize]);
+  }, [filterName, sortBy, sortDirection, pageSize]);
 
   // "Тихое" обновление данных для автосинхронизации
   const silentRefresh = useCallback(async () => {
@@ -83,7 +92,6 @@ function App() {
     
     try {
       const params = {
-        page: currentPage,
         size: pageSize,
         sortBy: sortBy,
         sortDirection: sortDirection
@@ -92,21 +100,24 @@ function App() {
         params.nameFilter = filterName.trim();
       }
       
-      const response = await api.get("/routes/paginated", { params });
+      const response = await api.get("/routes/cursor", { params });
       const newRoutes = response.data.content || [];
-      const newTotalElements = response.data.totalElements || 0;
+      const newTotalElements = response.data.totalCount || 0;
       
       // Проверяем изменения
       if (JSON.stringify(newRoutes) !== JSON.stringify(routes) || newTotalElements !== totalElements) {
         setRoutes(newRoutes);
-        setTotalPages(response.data.totalPages || 0);
+        setTotalPages(Math.ceil(newTotalElements / pageSize));
         setTotalElements(newTotalElements);
         setLastUpdateTime(new Date().toLocaleTimeString("ru-RU"));
         
         // Обновляем cursor информацию
-        if (response.data.cursor) {
-          setCursorInfo(response.data.cursor);
-        }
+        setCursorInfo({
+          next: response.data.nextCursor,
+          prev: response.data.prevCursor,
+          hasNext: response.data.hasNext,
+          hasPrev: response.data.hasPrev
+        });
         
         // Показываем уведомление о обновлении
         const changeCount = Math.abs(newTotalElements - totalElements);
@@ -120,7 +131,7 @@ function App() {
       console.error("Ошибка автоматического обновления:", err);
       // Не показываем ошибку пользователю для тихого обновления
     }
-  }, [activeSection, autoRefreshEnabled, currentPage, pageSize, sortBy, sortDirection, filterName, routes, totalElements]);
+  }, [activeSection, autoRefreshEnabled, pageSize, sortBy, sortDirection, filterName, routes, totalElements]);
 
   // Автоматическое обновление данных каждые 30 секунд
   useAutoRefresh(silentRefresh, 30000, [activeSection, autoRefreshEnabled]);
@@ -128,26 +139,52 @@ function App() {
   // Загрузка при монтировании компонента и при переключении на главную
   useEffect(() => {
     if (activeSection === 'main') {
-      loadRoutes(0, "", "id", "asc");
+      loadRoutes(null, "", "id", "asc", "next");
+      setCurrentPage(0);
     }
   }, [activeSection]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Обработка изменения страницы
+  // Обработка cursor navigation
+  const handleCursorNavigation = (direction) => {
+    if (!cursorInfo) return;
+    
+    if (direction === "next" && cursorInfo.hasNext && cursorInfo.next) {
+      loadRoutes(cursorInfo.next, filterName, sortBy, sortDirection, "next");
+      setCurrentPage(prev => prev + 1);
+    } else if (direction === "prev" && cursorInfo.hasPrev && cursorInfo.prev) {
+      loadRoutes(cursorInfo.prev, filterName, sortBy, sortDirection, "prev");
+      setCurrentPage(prev => Math.max(0, prev - 1));
+    }
+  };
+
+  // Обработка изменения страницы (эмуляция через cursor)
   const handlePageChange = (page) => {
-    loadRoutes(page, filterName, sortBy, sortDirection);
+    if (page === 0) {
+      // Первая страница
+      loadRoutes(null, filterName, sortBy, sortDirection, "next");
+      setCurrentPage(0);
+    } else if (page > currentPage) {
+      // Вперед
+      handleCursorNavigation("next");
+    } else {
+      // Назад
+      handleCursorNavigation("prev");
+    }
   };
 
   // Обработка изменения фильтра
   const handleFilterChange = (name) => {
     setFilterName(name);
-    loadRoutes(0, name, sortBy, sortDirection); // сброс на первую страницу при фильтрации
+    setCurrentPage(0);
+    loadRoutes(null, name, sortBy, sortDirection, "next");
   };
 
   // Обработка изменения сортировки
   const handleSortChange = (column, direction) => {
     setSortBy(column);
     setSortDirection(direction);
-    loadRoutes(currentPage, filterName, column, direction);
+    setCurrentPage(0);
+    loadRoutes(null, filterName, column, direction, "next");
   };
 
   // Удаление маршрута
@@ -160,7 +197,9 @@ function App() {
         const newTotalPages = Math.ceil(newTotalElements / pageSize);
         const pageToLoad = currentPage >= newTotalPages ? Math.max(0, newTotalPages - 1) : currentPage;
         
-        loadRoutes(pageToLoad, filterName, sortBy, sortDirection);
+        // После удаления перезагружаем первую страницу
+        loadRoutes(null, filterName, sortBy, sortDirection, "next");
+        setCurrentPage(0);
       } catch (err) {
         console.error("Ошибка удаления маршрута:", err);
         setError("Не удалось удалить маршрут. Попробуйте еще раз.");
@@ -193,7 +232,8 @@ function App() {
       }
       
       // Перезагрузка данных таблицы
-      loadRoutes(currentPage, filterName, sortBy, sortDirection);
+      loadRoutes(null, filterName, sortBy, sortDirection, "next");
+      setCurrentPage(0);
       
       // Обновление данных формы (координаты и локации)
       if (refreshFormData) {

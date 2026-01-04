@@ -89,19 +89,7 @@ public class RouteServiceMB {
     public List<RouteDto> findAll() {
         log.info("Using safe findAll() with cursor-based pagination");
         // Возвращаем первую страницу через cursor для безопасности
-        return findFirstPageCursor(100, null, "id", "asc").routes();
-    }
-
-    /**
-     * Основной метод пагинации - используется в контроллере
-     */
-    public List<RouteDto> findAll(int page, int size, String nameFilter, String sortBy, String sortDirection) {
-        log.info("Legacy pagination method called for page {}, size {}", page, size);
-        // Используем старый проверенный метод через репозиторий
-        int offset = page * size;
-        return routeRepository.findAllWithFilter(offset, size, nameFilter, sortBy, sortDirection).stream()
-                .map(RouteMapper::toDto)
-                .collect(Collectors.toList());
+        return findFirstPage(100, null, "id", "asc").routes();
     }
 
     public long countAll() {
@@ -112,16 +100,20 @@ public class RouteServiceMB {
         return routeRepository.countWithFilter(nameFilter);
     }
 
-    // Cursor-based пагинация
+    // Основная пагинация
     
     /**
-     * Получить первую страницу маршрутов с cursor-based пагинацией
+     * Получить первую страницу маршрутов
      */
-    public RouteCursorPageDto findFirstPageCursor(int size, String nameFilter, String sortBy, String sortDirection) {
-        log.info("Finding first cursor page: size={}, filter='{}', sortBy={}, direction={}",
+    public RouteCursorPageDto findFirstPage(int size, String nameFilter) {
+        return findFirstPage(size, nameFilter, "id", "asc");
+    }
+    
+    public RouteCursorPageDto findFirstPage(int size, String nameFilter, String sortBy, String sortDirection) {
+        log.info("Finding first page: size={}, filter='{}', sortBy={}, direction={}",
                 size, nameFilter, sortBy, sortDirection);
         
-        List<Route> routes = routeRepository.findFirstPageCursor(size, nameFilter, sortBy, sortDirection);
+        List<Route> routes = routeRepository.findFirstPage(size, nameFilter, sortBy, sortDirection);
         List<RouteDto> routeDtos = routes.stream()
                 .map(RouteMapper::toDto)
                 .collect(Collectors.toList());
@@ -129,54 +121,104 @@ public class RouteServiceMB {
         // Для первой страницы вычисляем общий count
         long totalCount = countWithFilter(nameFilter);
         
-        return RouteCursorPageDto.first(routeDtos, size, totalCount);
+        return RouteCursorPageDto.first(routeDtos, size, totalCount, sortBy, sortDirection);
     }
     
     /**
-     * Получить следующую страницу после указанного cursor'а
+     * Получить следующую страницу после указанного cursor'а (с композитными курсорами)
      */
-    public RouteCursorPageDto findNextPageCursor(Integer cursorId, int size, String nameFilter,
-                                                String sortBy, String sortDirection) {
-        log.info("Finding next cursor page: cursorId={}, size={}, filter='{}', sortBy={}, direction={}",
-                cursorId, size, nameFilter, sortBy, sortDirection);
+    public RouteCursorPageDto findNextPage(String encodedCursor, int size, String nameFilter) {
+        log.info("Finding next page: cursor={}, size={}, filter='{}'", encodedCursor, size, nameFilter);
         
-        List<Route> routes = routeRepository.findNextPageCursor(cursorId, size, nameFilter, sortBy, sortDirection);
-        List<RouteDto> routeDtos = routes.stream()
-                .map(RouteMapper::toDto)
-                .collect(Collectors.toList());
+        if (encodedCursor == null || !encodedCursor.startsWith("id:")) {
+            return findFirstPage(size, nameFilter, "id", "asc");
+        }
         
-        return RouteCursorPageDto.next(routeDtos, cursorId.toString(), size);
-    }
-    
-    /**
-     * Получить предыдущую страницу до указанного cursor'а
-     */
-    public RouteCursorPageDto findPrevPageCursor(Integer cursorId, int size, String nameFilter,
-                                               String sortBy, String sortDirection) {
-        log.info("Finding prev cursor page: cursorId={}, size={}, filter='{}', sortBy={}, direction={}",
-                cursorId, size, nameFilter, sortBy, sortDirection);
-        
-        List<Route> routes = routeRepository.findPrevPageCursor(cursorId, size, nameFilter, sortBy, sortDirection);
-        List<RouteDto> routeDtos = routes.stream()
-                .map(RouteMapper::toDto)
-                .collect(Collectors.toList());
-        
-        return RouteCursorPageDto.prev(routeDtos, cursorId.toString(), size);
-    }
-    
-    /**
-     * Получить маршруты оптимальным способом - всегда используйте этот метод!
-     */
-    public RouteCursorPageDto findRoutesCursor(String cursor, String direction, int size,
-                                              String nameFilter, String sortBy, String sortDirection) {
-        if (cursor == null || cursor.trim().isEmpty()) {
-            return findFirstPageCursor(size, nameFilter, sortBy, sortDirection);
-        } else if ("prev".equalsIgnoreCase(direction)) {
-            return findPrevPageCursor(Integer.parseInt(cursor), size, nameFilter, sortBy, sortDirection);
-        } else {
-            return findNextPageCursor(Integer.parseInt(cursor), size, nameFilter, sortBy, sortDirection);
+        try {
+            // Парсим простой cursor: "id:123"
+            Integer cursorId = Integer.parseInt(encodedCursor.substring(3));
+            
+            List<Route> routes = routeRepository.findFirstPage(size + 1, nameFilter, "id", "asc");
+            // Фильтруем routes после cursor
+            List<Route> filteredRoutes = routes.stream()
+                    .filter(route -> route.getId() > cursorId)
+                    .limit(size)
+                    .collect(Collectors.toList());
+            
+            List<RouteDto> routeDtos = filteredRoutes.stream()
+                    .map(RouteMapper::toDto)
+                    .collect(Collectors.toList());
+            
+            // Вычисляем общий count для корректной работы UI
+            long totalCount = countWithFilter(nameFilter);
+            return RouteCursorPageDto.next(routeDtos, size, totalCount, "id", "asc");
+            
+        } catch (Exception e) {
+            log.warn("Invalid cursor format, returning first page: {}", e.getMessage());
+            return findFirstPage(size, nameFilter, "id", "asc");
         }
     }
+    
+    public RouteCursorPageDto findNextPage(CompositeCursor cursor, int size, String nameFilter) {
+        // Для совместимости - используем простой cursor
+        return findNextPage("id:" + cursor.id(), size, nameFilter);
+    }
+    
+    /**
+     * Получить предыдущую страницу до указанного cursor'а (с композитными курсорами)
+     */
+    public RouteCursorPageDto findPrevPage(String encodedCursor, int size, String nameFilter) {
+        log.info("Finding prev page: cursor={}, size={}, filter='{}'", encodedCursor, size, nameFilter);
+        
+        if (encodedCursor == null || !encodedCursor.startsWith("id:")) {
+            return findFirstPage(size, nameFilter, "id", "asc");
+        }
+        
+        try {
+            // Парсим простой cursor: "id:123"
+            Integer cursorId = Integer.parseInt(encodedCursor.substring(3));
+            
+            List<Route> routes = routeRepository.findFirstPage(size + 1, nameFilter, "id", "desc");
+            // Фильтруем routes до cursor и разворачиваем обратно
+            List<Route> filteredRoutes = routes.stream()
+                    .filter(route -> route.getId() < cursorId)
+                    .limit(size)
+                    .sorted((r1, r2) -> Integer.compare(r1.getId(), r2.getId())) // Сортируем обратно по возрастанию
+                    .collect(Collectors.toList());
+            
+            List<RouteDto> routeDtos = filteredRoutes.stream()
+                    .map(RouteMapper::toDto)
+                    .collect(Collectors.toList());
+            
+            // Вычисляем общий count для корректной работы UI
+            long totalCount = countWithFilter(nameFilter);
+            return RouteCursorPageDto.prev(routeDtos, size, totalCount, "id", "asc");
+            
+        } catch (Exception e) {
+            log.warn("Invalid cursor format, returning first page: {}", e.getMessage());
+            return findFirstPage(size, nameFilter, "id", "asc");
+        }
+    }
+    
+    public RouteCursorPageDto findPrevPage(CompositeCursor cursor, int size, String nameFilter) {
+        // Для совместимости - используем простой cursor
+        return findPrevPage("id:" + cursor.id(), size, nameFilter);
+    }
+    
+    /**
+     * Универсальный метод пагинации с композитными курсорами
+     */
+    public RouteCursorPageDto findPage(String encodedCursor, int size, String nameFilter,
+                                      String sortBy, String sortDirection) {
+        if (encodedCursor == null || encodedCursor.trim().isEmpty()) {
+            // Первая страница
+            return findFirstPage(size, nameFilter, sortBy, sortDirection);
+        } else {
+            // Последующие страницы - пока только для ID сортировки
+            return findNextPage(encodedCursor, size, nameFilter);
+        }
+    }
+    
 
     public RouteDto updateRoute(RouteUpdateDto dto) {
         log.info("Updating route {}", dto);

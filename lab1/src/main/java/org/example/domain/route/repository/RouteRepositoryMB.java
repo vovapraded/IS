@@ -3,6 +3,7 @@ package org.example.domain.route.repository;
 import jakarta.ejb.Stateless;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
+import org.example.domain.route.dto.CompositeCursor;
 import org.example.domain.route.dto.RouteUpdateDto;
 import org.example.domain.route.entity.Route;
 import org.example.domain.route.mapper.RouteMapper;
@@ -24,55 +25,6 @@ public class RouteRepositoryMB {
                 .getResultList();
     }
 
-    public List<Route> findAll(int offset, int limit) {
-        return em.createQuery("SELECT r FROM Route r ORDER BY r.id", Route.class)
-                .setFirstResult(offset)
-                .setMaxResults(limit)
-                .getResultList();
-    }
-
-    public List<Route> findAllWithFilter(int offset, int limit, String nameFilter, String sortBy, String sortDirection) {
-        StringBuilder jpql = new StringBuilder("SELECT r FROM Route r");
-        
-        if (nameFilter != null && !nameFilter.trim().isEmpty()) {
-            jpql.append(" WHERE LOWER(r.name) LIKE LOWER(:nameFilter)");
-        }
-        
-        jpql.append(" ORDER BY ");
-        
-        switch (sortBy != null ? sortBy.toLowerCase() : "id") {
-            case "name":
-                jpql.append("r.name");
-                break;
-            case "distance":
-                jpql.append("r.distance");
-                break;
-            case "rating":
-                jpql.append("r.rating");
-                break;
-            case "creationdate":
-                jpql.append("r.creationDate");
-                break;
-            default:
-                jpql.append("r.id");
-        }
-        
-        if ("desc".equalsIgnoreCase(sortDirection)) {
-            jpql.append(" DESC");
-        } else {
-            jpql.append(" ASC");
-        }
-        
-        var query = em.createQuery(jpql.toString(), Route.class);
-        
-        if (nameFilter != null && !nameFilter.trim().isEmpty()) {
-            query.setParameter("nameFilter", "%" + nameFilter.trim() + "%");
-        }
-        
-        return query.setFirstResult(offset)
-                   .setMaxResults(limit)
-                   .getResultList();
-    }
 
     public long countAll() {
         return em.createQuery("SELECT COUNT(r) FROM Route r", Long.class)
@@ -365,12 +317,12 @@ public class RouteRepositoryMB {
         throw new UnsupportedOperationException("Use RouteService.createRoute() instead for proper entity management");
     }
 
-    // Cursor-based пагинация
+    // Пагинация (cursor-based с композитными курсорами)
     
     /**
-     * Получить первую страницу маршрутов (cursor-based пагинация)
+     * Получить первую страницу маршрутов
      */
-    public List<Route> findFirstPageCursor(int limit, String nameFilter, String sortBy, String sortDirection) {
+    public List<Route> findFirstPage(int limit, String nameFilter, String sortBy, String sortDirection) {
         StringBuilder jpql = new StringBuilder("SELECT r FROM Route r");
         
         if (nameFilter != null && !nameFilter.trim().isEmpty()) {
@@ -390,24 +342,23 @@ public class RouteRepositoryMB {
     }
     
     /**
-     * Получить следующую страницу после указанного cursor'а
+     * Получить следующую страницу после указанного cursor'а (с композитным курсором)
      */
-    public List<Route> findNextPageCursor(Integer cursorId, int limit, String nameFilter,
-                                         String sortBy, String sortDirection) {
+    public List<Route> findNextPage(CompositeCursor cursor, int limit, String nameFilter) {
         StringBuilder jpql = new StringBuilder("SELECT r FROM Route r WHERE ");
         
         // Условие для cursor (зависит от направления сортировки)
-        appendCursorCondition(jpql, sortBy, sortDirection, true);
+        appendCompositeCursorCondition(jpql, cursor, true);
         
         if (nameFilter != null && !nameFilter.trim().isEmpty()) {
             jpql.append(" AND LOWER(r.name) LIKE LOWER(:nameFilter)");
         }
         
         jpql.append(" ORDER BY ");
-        appendSortClause(jpql, sortBy, sortDirection);
+        appendSortClause(jpql, cursor.sortField(), cursor.sortDirection());
         
         var query = em.createQuery(jpql.toString(), Route.class);
-        query.setParameter("cursorId", cursorId);
+        setCompositeCursorParameters(query, cursor);
         
         if (nameFilter != null && !nameFilter.trim().isEmpty()) {
             query.setParameter("nameFilter", "%" + nameFilter.trim() + "%");
@@ -417,14 +368,13 @@ public class RouteRepositoryMB {
     }
     
     /**
-     * Получить предыдущую страницу до указанного cursor'а
+     * Получить предыдущую страницу до указанного cursor'а (с композитным курсором)
      */
-    public List<Route> findPrevPageCursor(Integer cursorId, int limit, String nameFilter,
-                                         String sortBy, String sortDirection) {
+    public List<Route> findPrevPage(CompositeCursor cursor, int limit, String nameFilter) {
         StringBuilder jpql = new StringBuilder("SELECT r FROM Route r WHERE ");
         
         // Условие для cursor (обратное направление)
-        appendCursorCondition(jpql, sortBy, sortDirection, false);
+        appendCompositeCursorCondition(jpql, cursor, false);
         
         if (nameFilter != null && !nameFilter.trim().isEmpty()) {
             jpql.append(" AND LOWER(r.name) LIKE LOWER(:nameFilter)");
@@ -432,10 +382,10 @@ public class RouteRepositoryMB {
         
         jpql.append(" ORDER BY ");
         // Для предыдущей страницы инвертируем сортировку
-        appendSortClause(jpql, sortBy, invertDirection(sortDirection));
+        appendSortClause(jpql, cursor.sortField(), invertDirection(cursor.sortDirection()));
         
         var query = em.createQuery(jpql.toString(), Route.class);
-        query.setParameter("cursorId", cursorId);
+        setCompositeCursorParameters(query, cursor);
         
         if (nameFilter != null && !nameFilter.trim().isEmpty()) {
             query.setParameter("nameFilter", "%" + nameFilter.trim() + "%");
@@ -472,7 +422,7 @@ public class RouteRepositoryMB {
             .getResultList();
     }
     
-    // Вспомогательные методы для cursor-based пагинации
+    // Вспомогательные методы для пагинации
     
     private void appendSortClause(StringBuilder jpql, String sortBy, String sortDirection) {
         switch (sortBy != null ? sortBy.toLowerCase() : "id") {
@@ -505,9 +455,12 @@ public class RouteRepositoryMB {
         }
     }
     
-    private void appendCursorCondition(StringBuilder jpql, String sortBy, String sortDirection, boolean isNext) {
+    /**
+     * Добавляет условие для композитного курсора (БЕЗ подзапросов!)
+     */
+    private void appendCompositeCursorCondition(StringBuilder jpql, CompositeCursor cursor, boolean isNext) {
         String operator;
-        boolean isDesc = "desc".equalsIgnoreCase(sortDirection);
+        boolean isDesc = cursor.isDescending();
         
         if (isNext) {
             operator = isDesc ? "<" : ">";
@@ -515,25 +468,48 @@ public class RouteRepositoryMB {
             operator = isDesc ? ">" : "<";
         }
         
-        switch (sortBy != null ? sortBy.toLowerCase() : "id") {
+        switch (cursor.sortField().toLowerCase()) {
             case "name":
-                jpql.append("(r.name ").append(operator).append(" (SELECT r2.name FROM Route r2 WHERE r2.id = :cursorId)");
-                jpql.append(" OR (r.name = (SELECT r2.name FROM Route r2 WHERE r2.id = :cursorId) AND r.id ").append(operator).append(" :cursorId))");
+                jpql.append("(r.name ").append(operator).append(" :cursorValue");
+                jpql.append(" OR (r.name = :cursorValue AND r.id ").append(operator).append(" :cursorId))");
                 break;
             case "distance":
-                jpql.append("(r.distance ").append(operator).append(" (SELECT r2.distance FROM Route r2 WHERE r2.id = :cursorId)");
-                jpql.append(" OR (r.distance = (SELECT r2.distance FROM Route r2 WHERE r2.id = :cursorId) AND r.id ").append(operator).append(" :cursorId))");
+                jpql.append("(r.distance ").append(operator).append(" :cursorValue");
+                jpql.append(" OR (r.distance = :cursorValue AND r.id ").append(operator).append(" :cursorId))");
                 break;
             case "rating":
-                jpql.append("(r.rating ").append(operator).append(" (SELECT r2.rating FROM Route r2 WHERE r2.id = :cursorId)");
-                jpql.append(" OR (r.rating = (SELECT r2.rating FROM Route r2 WHERE r2.id = :cursorId) AND r.id ").append(operator).append(" :cursorId))");
+                jpql.append("(r.rating ").append(operator).append(" :cursorValue");
+                jpql.append(" OR (r.rating = :cursorValue AND r.id ").append(operator).append(" :cursorId))");
                 break;
             case "creationdate":
-                jpql.append("(r.creationDate ").append(operator).append(" (SELECT r2.creationDate FROM Route r2 WHERE r2.id = :cursorId)");
-                jpql.append(" OR (r.creationDate = (SELECT r2.creationDate FROM Route r2 WHERE r2.id = :cursorId) AND r.id ").append(operator).append(" :cursorId))");
+                jpql.append("(r.creationDate ").append(operator).append(" :cursorValue");
+                jpql.append(" OR (r.creationDate = :cursorValue AND r.id ").append(operator).append(" :cursorId))");
                 break;
             default:
                 jpql.append("r.id ").append(operator).append(" :cursorId");
+        }
+    }
+    
+    /**
+     * Устанавливает параметры для композитного курсора
+     */
+    private void setCompositeCursorParameters(jakarta.persistence.Query query, CompositeCursor cursor) {
+        query.setParameter("cursorId", cursor.id());
+        
+        // Устанавливаем значение поля сортировки, если это не ID
+        if (!"id".equals(cursor.sortField().toLowerCase())) {
+            switch (cursor.sortField().toLowerCase()) {
+                case "name":
+                    query.setParameter("cursorValue", cursor.getStringValue());
+                    break;
+                case "distance":
+                case "rating":
+                    query.setParameter("cursorValue", cursor.getLongValue());
+                    break;
+                case "creationdate":
+                    query.setParameter("cursorValue", cursor.getZonedDateTimeValue());
+                    break;
+            }
         }
     }
     
