@@ -364,4 +364,180 @@ public class RouteRepositoryMB {
         // Но для совместимости сделаем простую заглушку
         throw new UnsupportedOperationException("Use RouteService.createRoute() instead for proper entity management");
     }
+
+    // Cursor-based пагинация
+    
+    /**
+     * Получить первую страницу маршрутов (cursor-based пагинация)
+     */
+    public List<Route> findFirstPageCursor(int limit, String nameFilter, String sortBy, String sortDirection) {
+        StringBuilder jpql = new StringBuilder("SELECT r FROM Route r");
+        
+        if (nameFilter != null && !nameFilter.trim().isEmpty()) {
+            jpql.append(" WHERE LOWER(r.name) LIKE LOWER(:nameFilter)");
+        }
+        
+        jpql.append(" ORDER BY ");
+        appendSortClause(jpql, sortBy, sortDirection);
+        
+        var query = em.createQuery(jpql.toString(), Route.class);
+        
+        if (nameFilter != null && !nameFilter.trim().isEmpty()) {
+            query.setParameter("nameFilter", "%" + nameFilter.trim() + "%");
+        }
+        
+        return query.setMaxResults(limit).getResultList();
+    }
+    
+    /**
+     * Получить следующую страницу после указанного cursor'а
+     */
+    public List<Route> findNextPageCursor(Integer cursorId, int limit, String nameFilter,
+                                         String sortBy, String sortDirection) {
+        StringBuilder jpql = new StringBuilder("SELECT r FROM Route r WHERE ");
+        
+        // Условие для cursor (зависит от направления сортировки)
+        appendCursorCondition(jpql, sortBy, sortDirection, true);
+        
+        if (nameFilter != null && !nameFilter.trim().isEmpty()) {
+            jpql.append(" AND LOWER(r.name) LIKE LOWER(:nameFilter)");
+        }
+        
+        jpql.append(" ORDER BY ");
+        appendSortClause(jpql, sortBy, sortDirection);
+        
+        var query = em.createQuery(jpql.toString(), Route.class);
+        query.setParameter("cursorId", cursorId);
+        
+        if (nameFilter != null && !nameFilter.trim().isEmpty()) {
+            query.setParameter("nameFilter", "%" + nameFilter.trim() + "%");
+        }
+        
+        return query.setMaxResults(limit).getResultList();
+    }
+    
+    /**
+     * Получить предыдущую страницу до указанного cursor'а
+     */
+    public List<Route> findPrevPageCursor(Integer cursorId, int limit, String nameFilter,
+                                         String sortBy, String sortDirection) {
+        StringBuilder jpql = new StringBuilder("SELECT r FROM Route r WHERE ");
+        
+        // Условие для cursor (обратное направление)
+        appendCursorCondition(jpql, sortBy, sortDirection, false);
+        
+        if (nameFilter != null && !nameFilter.trim().isEmpty()) {
+            jpql.append(" AND LOWER(r.name) LIKE LOWER(:nameFilter)");
+        }
+        
+        jpql.append(" ORDER BY ");
+        // Для предыдущей страницы инвертируем сортировку
+        appendSortClause(jpql, sortBy, invertDirection(sortDirection));
+        
+        var query = em.createQuery(jpql.toString(), Route.class);
+        query.setParameter("cursorId", cursorId);
+        
+        if (nameFilter != null && !nameFilter.trim().isEmpty()) {
+            query.setParameter("nameFilter", "%" + nameFilter.trim() + "%");
+        }
+        
+        List<Route> results = query.setMaxResults(limit).getResultList();
+        // Переворачиваем результат для правильного порядка
+        java.util.Collections.reverse(results);
+        return results;
+    }
+    
+    /**
+     * Получить маршруты по списку ID (для кандидатов при удалении)
+     * Заменяет проблематичный findAll().filter()
+     */
+    public List<Route> findByCoordinatesIdExcluding(Integer coordinatesId, Integer excludeRouteId) {
+        return em.createQuery(
+            "SELECT r FROM Route r WHERE r.coordinates.id = :coordId AND r.id != :excludeId",
+            Route.class)
+            .setParameter("coordId", coordinatesId)
+            .setParameter("excludeId", excludeRouteId)
+            .getResultList();
+    }
+    
+    /**
+     * Получить маршруты использующие указанную локацию (как from или to), исключая указанный маршрут
+     */
+    public List<Route> findByLocationIdExcluding(Integer locationId, Integer excludeRouteId) {
+        return em.createQuery(
+            "SELECT r FROM Route r WHERE (r.from.id = :locId OR r.to.id = :locId) AND r.id != :excludeId",
+            Route.class)
+            .setParameter("locId", locationId)
+            .setParameter("excludeId", excludeRouteId)
+            .getResultList();
+    }
+    
+    // Вспомогательные методы для cursor-based пагинации
+    
+    private void appendSortClause(StringBuilder jpql, String sortBy, String sortDirection) {
+        switch (sortBy != null ? sortBy.toLowerCase() : "id") {
+            case "name":
+                jpql.append("r.name");
+                break;
+            case "distance":
+                jpql.append("r.distance");
+                break;
+            case "rating":
+                jpql.append("r.rating");
+                break;
+            case "creationdate":
+                jpql.append("r.creationDate");
+                break;
+            default:
+                jpql.append("r.id");
+        }
+        
+        if ("desc".equalsIgnoreCase(sortDirection)) {
+            jpql.append(" DESC");
+        } else {
+            jpql.append(" ASC");
+        }
+        
+        // Всегда добавляем ID как вторичную сортировку для стабильности cursor'а
+        if (!"id".equals(sortBy)) {
+            jpql.append(", r.id ");
+            jpql.append("desc".equalsIgnoreCase(sortDirection) ? "DESC" : "ASC");
+        }
+    }
+    
+    private void appendCursorCondition(StringBuilder jpql, String sortBy, String sortDirection, boolean isNext) {
+        String operator;
+        boolean isDesc = "desc".equalsIgnoreCase(sortDirection);
+        
+        if (isNext) {
+            operator = isDesc ? "<" : ">";
+        } else {
+            operator = isDesc ? ">" : "<";
+        }
+        
+        switch (sortBy != null ? sortBy.toLowerCase() : "id") {
+            case "name":
+                jpql.append("(r.name ").append(operator).append(" (SELECT r2.name FROM Route r2 WHERE r2.id = :cursorId)");
+                jpql.append(" OR (r.name = (SELECT r2.name FROM Route r2 WHERE r2.id = :cursorId) AND r.id ").append(operator).append(" :cursorId))");
+                break;
+            case "distance":
+                jpql.append("(r.distance ").append(operator).append(" (SELECT r2.distance FROM Route r2 WHERE r2.id = :cursorId)");
+                jpql.append(" OR (r.distance = (SELECT r2.distance FROM Route r2 WHERE r2.id = :cursorId) AND r.id ").append(operator).append(" :cursorId))");
+                break;
+            case "rating":
+                jpql.append("(r.rating ").append(operator).append(" (SELECT r2.rating FROM Route r2 WHERE r2.id = :cursorId)");
+                jpql.append(" OR (r.rating = (SELECT r2.rating FROM Route r2 WHERE r2.id = :cursorId) AND r.id ").append(operator).append(" :cursorId))");
+                break;
+            case "creationdate":
+                jpql.append("(r.creationDate ").append(operator).append(" (SELECT r2.creationDate FROM Route r2 WHERE r2.id = :cursorId)");
+                jpql.append(" OR (r.creationDate = (SELECT r2.creationDate FROM Route r2 WHERE r2.id = :cursorId) AND r.id ").append(operator).append(" :cursorId))");
+                break;
+            default:
+                jpql.append("r.id ").append(operator).append(" :cursorId");
+        }
+    }
+    
+    private String invertDirection(String direction) {
+        return "desc".equalsIgnoreCase(direction) ? "asc" : "desc";
+    }
 }

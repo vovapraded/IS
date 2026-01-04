@@ -16,6 +16,7 @@ import org.example.domain.coordinates.dto.CoordinatesDto;
 import org.example.domain.location.dto.LocationDto;
 import org.example.domain.coordinates.repository.CoordinatesRepositoryMB;
 import org.example.domain.location.repository.LocationRepositoryMB;
+import org.example.domain.route.dto.RouteCursorPageDto;
 
 import java.util.HashMap;
 import java.util.List;
@@ -82,13 +83,21 @@ public class RouteServiceMB {
         return RouteMapper.toDto(route);
     }
 
+    /**
+     * Безопасный метод findAll для совместимости
+     */
     public List<RouteDto> findAll() {
-        return routeRepository.findAll().stream()
-                .map(RouteMapper::toDto)
-                .collect(Collectors.toList());
+        log.info("Using safe findAll() with cursor-based pagination");
+        // Возвращаем первую страницу через cursor для безопасности
+        return findFirstPageCursor(100, null, "id", "asc").routes();
     }
 
+    /**
+     * Основной метод пагинации - используется в контроллере
+     */
     public List<RouteDto> findAll(int page, int size, String nameFilter, String sortBy, String sortDirection) {
+        log.info("Legacy pagination method called for page {}, size {}", page, size);
+        // Используем старый проверенный метод через репозиторий
         int offset = page * size;
         return routeRepository.findAllWithFilter(offset, size, nameFilter, sortBy, sortDirection).stream()
                 .map(RouteMapper::toDto)
@@ -101,6 +110,72 @@ public class RouteServiceMB {
 
     public long countWithFilter(String nameFilter) {
         return routeRepository.countWithFilter(nameFilter);
+    }
+
+    // Cursor-based пагинация
+    
+    /**
+     * Получить первую страницу маршрутов с cursor-based пагинацией
+     */
+    public RouteCursorPageDto findFirstPageCursor(int size, String nameFilter, String sortBy, String sortDirection) {
+        log.info("Finding first cursor page: size={}, filter='{}', sortBy={}, direction={}",
+                size, nameFilter, sortBy, sortDirection);
+        
+        List<Route> routes = routeRepository.findFirstPageCursor(size, nameFilter, sortBy, sortDirection);
+        List<RouteDto> routeDtos = routes.stream()
+                .map(RouteMapper::toDto)
+                .collect(Collectors.toList());
+        
+        // Для первой страницы вычисляем общий count
+        long totalCount = countWithFilter(nameFilter);
+        
+        return RouteCursorPageDto.first(routeDtos, size, totalCount);
+    }
+    
+    /**
+     * Получить следующую страницу после указанного cursor'а
+     */
+    public RouteCursorPageDto findNextPageCursor(Integer cursorId, int size, String nameFilter,
+                                                String sortBy, String sortDirection) {
+        log.info("Finding next cursor page: cursorId={}, size={}, filter='{}', sortBy={}, direction={}",
+                cursorId, size, nameFilter, sortBy, sortDirection);
+        
+        List<Route> routes = routeRepository.findNextPageCursor(cursorId, size, nameFilter, sortBy, sortDirection);
+        List<RouteDto> routeDtos = routes.stream()
+                .map(RouteMapper::toDto)
+                .collect(Collectors.toList());
+        
+        return RouteCursorPageDto.next(routeDtos, cursorId.toString(), size);
+    }
+    
+    /**
+     * Получить предыдущую страницу до указанного cursor'а
+     */
+    public RouteCursorPageDto findPrevPageCursor(Integer cursorId, int size, String nameFilter,
+                                               String sortBy, String sortDirection) {
+        log.info("Finding prev cursor page: cursorId={}, size={}, filter='{}', sortBy={}, direction={}",
+                cursorId, size, nameFilter, sortBy, sortDirection);
+        
+        List<Route> routes = routeRepository.findPrevPageCursor(cursorId, size, nameFilter, sortBy, sortDirection);
+        List<RouteDto> routeDtos = routes.stream()
+                .map(RouteMapper::toDto)
+                .collect(Collectors.toList());
+        
+        return RouteCursorPageDto.prev(routeDtos, cursorId.toString(), size);
+    }
+    
+    /**
+     * Получить маршруты оптимальным способом - всегда используйте этот метод!
+     */
+    public RouteCursorPageDto findRoutesCursor(String cursor, String direction, int size,
+                                              String nameFilter, String sortBy, String sortDirection) {
+        if (cursor == null || cursor.trim().isEmpty()) {
+            return findFirstPageCursor(size, nameFilter, sortBy, sortDirection);
+        } else if ("prev".equalsIgnoreCase(direction)) {
+            return findPrevPageCursor(Integer.parseInt(cursor), size, nameFilter, sortBy, sortDirection);
+        } else {
+            return findNextPageCursor(Integer.parseInt(cursor), size, nameFilter, sortBy, sortDirection);
+        }
     }
 
     public RouteDto updateRoute(RouteUpdateDto dto) {
@@ -159,28 +234,24 @@ public class RouteServiceMB {
             List<RouteDto> fromLocationCandidates = java.util.Collections.emptyList();
             List<RouteDto> toLocationCandidates = java.util.Collections.emptyList();
             
+            // ИСПРАВЛЕНО: используем специальные методы вместо findAll().filter()
             if (coordinatesUsageCount > 0) {
-                coordinatesCandidates = routeRepository.findAll().stream()
-                    .filter(r -> !r.getId().equals(id))
-                    .filter(r -> r.getCoordinates().getId().equals(routeToDelete.getCoordinates().getId()))
+                coordinatesCandidates = routeRepository.findByCoordinatesIdExcluding(
+                    routeToDelete.getCoordinates().getId(), id).stream()
                     .map(RouteMapper::toDto)
                     .collect(Collectors.toList());
             }
             
             if (fromLocationUsageCount > 0) {
-                fromLocationCandidates = routeRepository.findAll().stream()
-                    .filter(r -> !r.getId().equals(id))
-                    .filter(r -> r.getFrom().getId().equals(routeToDelete.getFrom().getId()) ||
-                                 r.getTo().getId().equals(routeToDelete.getFrom().getId()))
+                fromLocationCandidates = routeRepository.findByLocationIdExcluding(
+                    routeToDelete.getFrom().getId(), id).stream()
                     .map(RouteMapper::toDto)
                     .collect(Collectors.toList());
             }
             
             if (toLocationUsageCount > 0) {
-                toLocationCandidates = routeRepository.findAll().stream()
-                    .filter(r -> !r.getId().equals(id))
-                    .filter(r -> r.getFrom().getId().equals(routeToDelete.getTo().getId()) ||
-                                 r.getTo().getId().equals(routeToDelete.getTo().getId()))
+                toLocationCandidates = routeRepository.findByLocationIdExcluding(
+                    routeToDelete.getTo().getId(), id).stream()
                     .map(RouteMapper::toDto)
                     .collect(Collectors.toList());
             }

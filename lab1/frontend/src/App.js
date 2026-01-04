@@ -16,6 +16,7 @@ function App() {
   const [totalPages, setTotalPages] = useState(0);
   const [totalElements, setTotalElements] = useState(0);
   const [currentPage, setCurrentPage] = useState(0);
+  const [cursorInfo, setCursorInfo] = useState(null); // Cursor-based пагинация (для мониторинга)
   const [filterName, setFilterName] = useState("");
   const [sortBy, setSortBy] = useState("id");
   const [sortDirection, setSortDirection] = useState("asc");
@@ -52,6 +53,19 @@ function App() {
       setSortBy(sort);
       setSortDirection(direction);
       setLastUpdateTime(new Date().toLocaleTimeString("ru-RU"));
+      
+      // Сохраняем cursor информацию для мониторинга и возможных будущих оптимизаций
+      if (response.data.cursor) {
+        setCursorInfo(response.data.cursor);
+        console.debug('🚀 Cursor-based pagination info:', {
+          next: response.data.cursor.next,
+          prev: response.data.cursor.prev,
+          hasNext: response.data.cursor.hasNext,
+          hasPrev: response.data.cursor.hasPrev,
+          page: page,
+          performance: 'Optimized with cursor-based backend'
+        });
+      }
     } catch (err) {
       console.error("Ошибка загрузки маршрутов:", err);
       setError("Не удалось загрузить маршруты. Проверьте соединение с сервером.");
@@ -88,6 +102,11 @@ function App() {
         setTotalPages(response.data.totalPages || 0);
         setTotalElements(newTotalElements);
         setLastUpdateTime(new Date().toLocaleTimeString("ru-RU"));
+        
+        // Обновляем cursor информацию
+        if (response.data.cursor) {
+          setCursorInfo(response.data.cursor);
+        }
         
         // Показываем уведомление о обновлении
         const changeCount = Math.abs(newTotalElements - totalElements);
@@ -253,6 +272,7 @@ function App() {
                   onSortChange={handleSortChange}
                   onEdit={(route) => setEditing(route)}
                   onDelete={handleDelete}
+                  cursorInfo={cursorInfo}
                 />
               )}
 

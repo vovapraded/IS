@@ -27,7 +27,8 @@ function RoutesTable({
   sortBy,
   sortDirection,
   onEdit,
-  onDelete
+  onDelete,
+  cursorInfo // Новый пропс для отображения cursor информации
 }) {
   const [localFilter, setLocalFilter] = useState(filterName || "");
   const [deleteDialog, setDeleteDialog] = useState({ open: false, route: null, message: "" });
