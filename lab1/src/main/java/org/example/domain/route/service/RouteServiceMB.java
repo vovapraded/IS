@@ -53,19 +53,19 @@ public class RouteServiceMB {
      * Проверяет уникальность имени маршрута при создании
      */
     private void validateRouteNameUniqueness(String name) {
-        log.info("🔍 VALIDATION: Checking route name uniqueness for: '{}'", name);
+        log.info("VALIDATION: Checking route name uniqueness for: '{}'", name);
         if (name == null || name.trim().isEmpty()) {
-            log.info("⚪ VALIDATION: Name is empty, skipping uniqueness check");
+            log.info("VALIDATION: Name is empty, skipping uniqueness check");
             return; // пустые имена не проверяем
         }
         
-        log.info("🔎 VALIDATION: Searching for existing route with name: '{}'", name.trim());
+        log.info("VALIDATION: Searching for existing route with name: '{}'", name.trim());
         Route existingRoute = routeRepository.findByName(name.trim());
         if (existingRoute != null) {
-            log.error("❌ VALIDATION: Route with name '{}' already exists with ID: {}", name.trim(), existingRoute.getId());
+            log.error("VALIDATION: Route with name '{}' already exists with ID: {}", name.trim(), existingRoute.getId());
             throw new RouteNameAlreadyExistsException(name.trim(), existingRoute.getId());
         }
-        log.info("✅ VALIDATION: Route name '{}' is unique", name.trim());
+        log.info("VALIDATION: Route name '{}' is unique", name.trim());
     }
     
     /**
@@ -85,32 +85,30 @@ public class RouteServiceMB {
     /**
      * Проверяет уникальность координат маршрута при создании
      */
-    private void validateRouteCoordinatesUniqueness(Float x, Double y) {
-        log.info("🔍 COORDINATES VALIDATION: Checking coordinates uniqueness for: ({}, {})", x, y);
+    private void validateRouteCoordinatesUniqueness(Double x, Double y) {
+        log.info("COORDINATES VALIDATION: Checking coordinates uniqueness for: ({}, {})", x, y);
         if (x == null || y == null) {
-            log.info("⚪ COORDINATES VALIDATION: X or Y coordinate is null, skipping uniqueness check");
+            log.info("COORDINATES VALIDATION: X or Y coordinate is null, skipping uniqueness check");
             return; // некорректные координаты не проверяем
         }
         
         try {
-            Double doubleX = x.doubleValue();
-            log.info("🔎 COORDINATES VALIDATION: Searching for existing route with coordinates: ({}, {}) - converted to ({}, {})",
-                    x, y, doubleX, y);
-            Route existingRoute = routeRepository.findByCoordinates(doubleX, y);
+            log.info("COORDINATES VALIDATION: Searching for existing route with coordinates: ({}, {})", x, y);
+            Route existingRoute = routeRepository.findByCoordinates(x, y);
             
             if (existingRoute != null) {
-                log.error("❌ COORDINATES VALIDATION: Route with coordinates ({}, {}) already exists with ID: {}",
+                log.error("COORDINATES VALIDATION: Route with coordinates ({}, {}) already exists with ID: {}",
                         x, y, existingRoute.getId());
-                RouteCoordinatesAlreadyExistException exception = new RouteCoordinatesAlreadyExistException(x, y, existingRoute.getId());
-                log.error("🚨 COORDINATES VALIDATION: Throwing exception: {}", exception.getMessage());
+                RouteCoordinatesAlreadyExistException exception = new RouteCoordinatesAlreadyExistException(x.floatValue(), y, existingRoute.getId());
+                log.error("COORDINATES VALIDATION: Throwing exception: {}", exception.getMessage());
                 throw exception;
             }
-            log.info("✅ COORDINATES VALIDATION: Coordinates ({}, {}) are unique", x, y);
+            log.info("COORDINATES VALIDATION: Coordinates ({}, {}) are unique", x, y);
         } catch (RouteCoordinatesAlreadyExistException e) {
-            log.error("🔥 COORDINATES VALIDATION: Re-throwing coordinates exception: {}", e.getMessage());
+            log.error("COORDINATES VALIDATION: Re-throwing coordinates exception: {}", e.getMessage());
             throw e; // Перебрасываем наше исключение
         } catch (Exception e) {
-            log.error("💥 COORDINATES VALIDATION: Unexpected error during coordinates validation: {}", e.getMessage(), e);
+            log.error("COORDINATES VALIDATION: Unexpected error during coordinates validation: {}", e.getMessage(), e);
             throw new RuntimeException("Error during coordinates validation: " + e.getMessage(), e);
         }
     }
@@ -118,84 +116,129 @@ public class RouteServiceMB {
     /**
      * Проверяет уникальность координат маршрута при обновлении
      */
-    private void validateRouteCoordinatesUniquenessForUpdate(Float x, Double y, Integer excludeRouteId) {
-        log.info("🔍 UPDATE COORDINATES VALIDATION: Checking coordinates uniqueness for update: ({}, {}), excluding route ID: {}",
+    private void validateRouteCoordinatesUniquenessForUpdate(Double x, Double y, Integer excludeRouteId) {
+        log.info("UPDATE COORDINATES VALIDATION: Checking coordinates uniqueness for update: ({}, {}), excluding route ID: {}",
                 x, y, excludeRouteId);
         if (x == null || y == null) {
-            log.info("⚪ UPDATE COORDINATES VALIDATION: X or Y coordinate is null, skipping uniqueness check");
+            log.info("UPDATE COORDINATES VALIDATION: X or Y coordinate is null, skipping uniqueness check");
             return; // некорректные координаты не проверяем
         }
         
         try {
-            Double doubleX = x.doubleValue();
-            log.info("🔎 UPDATE COORDINATES VALIDATION: Searching for existing route with coordinates: ({}, {}) excluding route: {}",
-                    doubleX, y, excludeRouteId);
-            Route existingRoute = routeRepository.findByCoordinatesExcluding(doubleX, y, excludeRouteId);
+            log.info("UPDATE COORDINATES VALIDATION: Searching for existing route with coordinates: ({}, {}) excluding route: {}",
+                    x, y, excludeRouteId);
+            Route existingRoute = routeRepository.findByCoordinatesExcluding(x, y, excludeRouteId);
             
             if (existingRoute != null) {
-                log.error("❌ UPDATE COORDINATES VALIDATION: Route with coordinates ({}, {}) already exists with ID: {} (excluding: {})",
+                log.error("UPDATE COORDINATES VALIDATION: Route with coordinates ({}, {}) already exists with ID: {} (excluding: {})",
                         x, y, existingRoute.getId(), excludeRouteId);
-                RouteCoordinatesAlreadyExistException exception = new RouteCoordinatesAlreadyExistException(x, y, existingRoute.getId());
-                log.error("🚨 UPDATE COORDINATES VALIDATION: Throwing exception: {}", exception.getMessage());
+                RouteCoordinatesAlreadyExistException exception = new RouteCoordinatesAlreadyExistException(x.floatValue(), y, existingRoute.getId());
+                log.error("UPDATE COORDINATES VALIDATION: Throwing exception: {}", exception.getMessage());
                 throw exception;
             }
-            log.info("✅ UPDATE COORDINATES VALIDATION: Coordinates ({}, {}) are unique for update", x, y);
+            log.info("UPDATE COORDINATES VALIDATION: Coordinates ({}, {}) are unique for update", x, y);
         } catch (RouteCoordinatesAlreadyExistException e) {
-            log.error("🔥 UPDATE COORDINATES VALIDATION: Re-throwing coordinates exception: {}", e.getMessage());
+            log.error("UPDATE COORDINATES VALIDATION: Re-throwing coordinates exception: {}", e.getMessage());
             throw e; // Перебрасываем наше исключение
         } catch (Exception e) {
-            log.error("💥 UPDATE COORDINATES VALIDATION: Unexpected error during coordinates validation: {}", e.getMessage(), e);
+            log.error("UPDATE COORDINATES VALIDATION: Unexpected error during coordinates validation: {}", e.getMessage(), e);
             throw new RuntimeException("Error during coordinates validation for update: " + e.getMessage(), e);
         }
     }
 
     public RouteDto createRoute(RouteCreateDto dto) {
-        log.info("Creating route: {}", dto);
-        
-        // Проверяем уникальность имени маршрута
-        log.info("Validating route name uniqueness: {}", dto.name());
-        validateRouteNameUniqueness(dto.name());
-        
-        // Проверяем уникальность координат маршрута
-        if (dto.coordinates() != null) {
-            log.info("Validating route coordinates uniqueness: ({}, {})", dto.coordinates().x(), dto.coordinates().y());
-            validateRouteCoordinatesUniqueness(dto.coordinates().x(), dto.coordinates().y());
-        }
-        
-        log.info("Validation passed, proceeding with route creation");
+        log.info("SERVICE: Starting route creation: {}", dto);
         
         try {
+            // Проверяем уникальность имени маршрута
+            log.info("SERVICE: Validating route name uniqueness: {}", dto.name());
+            validateRouteNameUniqueness(dto.name());
+            log.info("SERVICE: Name validation passed");
+            
+            // Проверяем уникальность координат маршрута
+            if (dto.coordinates() != null) {
+                log.info("SERVICE: Validating route coordinates uniqueness: ({}, {})", dto.coordinates().x(), dto.coordinates().y());
+                validateRouteCoordinatesUniqueness((double)dto.coordinates().x(), dto.coordinates().y());
+                log.info("SERVICE: Coordinates validation passed");
+            }
+            
+            log.info("SERVICE: All validation passed, proceeding with route creation");
+            
             // Создаем координаты и локации (owner будет установлен позже)
+            log.info("SERVICE: Creating coordinates...");
             CoordinatesDto coordsDto = coordinatesService.findOrCreate(dto.coordinates());
+            log.info("SERVICE: Coordinates created with ID: {}", coordsDto.id());
+            
+            log.info("SERVICE: Creating from location...");
             LocationDto fromDto = locationService.findOrCreate(dto.from());
+            log.info("SERVICE: From location created with ID: {}", fromDto.id());
+            
+            log.info("SERVICE: Creating to location...");
             LocationDto toDto = locationService.findOrCreate(dto.to());
+            log.info("SERVICE: To location created with ID: {}", toDto.id());
             
             // Создаем маршрут с установленными связями используя единый EntityManager
+            log.info("SERVICE: Creating route entity...");
             Route entity = new Route();
             entity.setName(dto.name());
             entity.setDistance(dto.distance());
             entity.setRating(dto.rating());
             
             // Используем единый EntityManager для загрузки всех связанных объектов
-            entity.setCoordinates(em.find(org.example.domain.coordinates.entity.Coordinates.class, coordsDto.id()));
-            entity.setFrom(em.find(org.example.domain.location.entity.Location.class, fromDto.id()));
-            entity.setTo(em.find(org.example.domain.location.entity.Location.class, toDto.id()));
+            log.info("SERVICE: Loading coordinates entity with ID: {}", coordsDto.id());
+            org.example.domain.coordinates.entity.Coordinates coordsEntity = em.find(org.example.domain.coordinates.entity.Coordinates.class, coordsDto.id());
+            if (coordsEntity == null) {
+                throw new IllegalStateException("Failed to find coordinates entity with ID: " + coordsDto.id());
+            }
+            entity.setCoordinates(coordsEntity);
+            
+            log.info("SERVICE: Loading from location entity with ID: {}", fromDto.id());
+            org.example.domain.location.entity.Location fromEntity = em.find(org.example.domain.location.entity.Location.class, fromDto.id());
+            if (fromEntity == null) {
+                throw new IllegalStateException("Failed to find from location entity with ID: " + fromDto.id());
+            }
+            entity.setFrom(fromEntity);
+            
+            log.info("SERVICE: Loading to location entity with ID: {}", toDto.id());
+            org.example.domain.location.entity.Location toEntity = em.find(org.example.domain.location.entity.Location.class, toDto.id());
+            if (toEntity == null) {
+                throw new IllegalStateException("Failed to find to location entity with ID: " + toDto.id());
+            }
+            entity.setTo(toEntity);
             
             // Сохраняем маршрут
+            log.info("SERVICE: Saving route entity...");
             Route saved = routeRepository.save(entity);
+            log.info("SERVICE: Route saved with ID: {}", saved.getId());
             
             // Обновляем владельца для координат и локаций
-            coordinatesService.updateOwner(saved.getCoordinates().getId(), saved);
-            locationService.updateOwner(saved.getFrom().getId(), saved);
-            locationService.updateOwner(saved.getTo().getId(), saved);
+            try {
+                log.info("SERVICE: Updating coordinates owner...");
+                coordinatesService.updateOwner(saved.getCoordinates().getId(), saved);
+                
+                log.info("SERVICE: Updating from location owner...");
+                locationService.updateOwner(saved.getFrom().getId(), saved);
+                
+                log.info("SERVICE: Updating to location owner...");
+                locationService.updateOwner(saved.getTo().getId(), saved);
+            } catch (Exception ownerUpdateException) {
+                log.error("SERVICE: Failed to update owners, but route was created. Route ID: {}, Error: {}",
+                         saved.getId(), ownerUpdateException.getMessage(), ownerUpdateException);
+                // Продолжаем выполнение - маршрут создан, проблемы с владельцем не критичны
+            }
             
             RouteDto result = RouteMapper.toDto(saved);
-            log.info("Route successfully created with id: {}", result.id());
+            log.info("SERVICE: Route successfully created with id: {}", result.id());
             return result;
             
+        } catch (RouteNameAlreadyExistsException | RouteCoordinatesAlreadyExistException e) {
+            log.error("SERVICE: Validation error during route creation: {}", e.getMessage());
+            throw e; // Перебрасываем валидационные исключения как есть
         } catch (Exception e) {
-            log.error("Error creating route entities: {}", e.getMessage(), e);
-            throw e; // Повторно выбрасываем исключение
+            log.error("SERVICE: Unexpected error during route creation - Type: {}, Message: {}",
+                     e.getClass().getName(), e.getMessage(), e);
+            // Оборачиваем в RuntimeException с подробной информацией
+            throw new RuntimeException("Failed to create route: " + e.getMessage(), e);
         }
     }
 
@@ -372,7 +415,7 @@ public class RouteServiceMB {
             Route currentRoute = routeRepository.findById(dto.id());
             if (currentRoute != null && dto.coordinates() != null) {
                 validateRouteCoordinatesUniquenessForUpdate(
-                    dto.coordinates().x(),
+                    (double)dto.coordinates().x(),
                     dto.coordinates().y(),
                     dto.id()
                 );
@@ -635,7 +678,7 @@ public class RouteServiceMB {
                 .collect(Collectors.toList());
     }
 
-    public RouteDto addRouteBetweenLocations(String routeName, float coordX, Double coordY,
+    public RouteDto addRouteBetweenLocations(String routeName, Double coordX, Double coordY,
                                            Double fromX, double fromY, String fromName,
                                            Double toX, double toY, String toName,
                                            Long distance, Long rating) {
@@ -648,7 +691,7 @@ public class RouteServiceMB {
         validateRouteCoordinatesUniqueness(coordX, coordY);
         
         // Используем существующий метод createRoute с правильной структурой
-        CoordinatesDto coordinatesDto = new CoordinatesDto(null, coordX, coordY, null, null);
+        CoordinatesDto coordinatesDto = new CoordinatesDto(null, coordX.floatValue(), coordY, null, null);
         LocationDto fromDto = new LocationDto(null, fromX, fromY, fromName, null, null);
         LocationDto toDto = new LocationDto(null, toX, toY, toName, null, null);
         

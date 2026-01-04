@@ -287,7 +287,7 @@ public class RouteImportServiceMB {
                 Float.parseFloat(parts[1].trim()),         // coordinates_x
                 Double.parseDouble(parts[2].trim()),       // coordinates_y
                 Double.parseDouble(parts[3].trim()),       // from_x
-                Double.parseDouble(parts[4].trim()),       // from_y  
+                Double.parseDouble(parts[4].trim()),       // from_y
                 parts[5].trim(),                           // from_name (может быть пустым)
                 Double.parseDouble(parts[6].trim()),       // to_x
                 Double.parseDouble(parts[7].trim()),       // to_y

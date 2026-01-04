@@ -45,37 +45,58 @@ public class CoordinatesServiceMB {
     }
 
     public CoordinatesDto findOrCreate(CoordinatesDto dto) {
+        System.out.println("=== DEBUG: findOrCreate called ===");
+        System.out.println("Input DTO: " + dto);
+        System.out.println("DTO x value: " + dto.x() + " (class: float)");
+        System.out.println("DTO y value: " + dto.y() + " (class: " + (dto.y() != null ? dto.y().getClass().getSimpleName() : "null") + ")");
+        
         // Проверяем, существуют ли уже такие координаты
         Optional<Coordinates> existing = coordinatesRepository.findByXAndY(dto.x(), dto.y());
         if (existing.isPresent()) {
+            System.out.println("Found existing coordinates: " + existing.get());
             return CoordinatesMapper.toDto(existing.get());
         }
         
         // Создаем новые координаты
+        System.out.println("Creating new coordinates...");
         Coordinates newCoordinates = Coordinates.builder()
                 .x(dto.x())
                 .y(dto.y())
                 .build();
         
+        System.out.println("Built coordinates entity: x=" + newCoordinates.getX() + ", y=" + newCoordinates.getY());
+        
         Coordinates saved = coordinatesRepository.save(newCoordinates);
+        System.out.println("Saved coordinates: " + saved);
         return CoordinatesMapper.toDto(saved);
     }
 
     public CoordinatesDto findOrCreateWithOwner(CoordinatesDto dto, Route ownerRoute) {
+        System.out.println("=== DEBUG: findOrCreateWithOwner called ===");
+        System.out.println("Input DTO: " + dto);
+        System.out.println("DTO x value: " + dto.x() + " (class: float)");
+        System.out.println("DTO y value: " + dto.y() + " (class: " + (dto.y() != null ? dto.y().getClass().getSimpleName() : "null") + ")");
+        System.out.println("Owner route: " + (ownerRoute != null ? ownerRoute.getId() + ":" + ownerRoute.getName() : "null"));
+        
         // Проверяем, существуют ли уже такие координаты
         Optional<Coordinates> existing = coordinatesRepository.findByXAndY(dto.x(), dto.y());
         if (existing.isPresent()) {
+            System.out.println("Found existing coordinates: " + existing.get());
             return CoordinatesMapper.toDto(existing.get());
         }
         
         // Создаем новые координаты с владельцем
+        System.out.println("Creating new coordinates with owner...");
         Coordinates newCoordinates = Coordinates.builder()
                 .x(dto.x())
                 .y(dto.y())
                 .ownerRoute(ownerRoute)
                 .build();
         
+        System.out.println("Built coordinates entity: x=" + newCoordinates.getX() + ", y=" + newCoordinates.getY() + ", owner=" + (newCoordinates.getOwnerRoute() != null ? newCoordinates.getOwnerRoute().getId() : "null"));
+        
         Coordinates saved = coordinatesRepository.save(newCoordinates);
+        System.out.println("Saved coordinates: " + saved);
         return CoordinatesMapper.toDto(saved);
     }
 

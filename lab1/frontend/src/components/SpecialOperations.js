@@ -348,7 +348,7 @@ function SpecialOperations() {
   return (
     <Paper elevation={3} sx={{ p: 3 }}>
       <Typography variant="h4" gutterBottom>
-        🔧 Специальные операции
+        Специальные операции
       </Typography>
       <Typography variant="body1" color="text.secondary" sx={{ mb: 3 }}>
         Выполнение специальных операций с маршрутами
@@ -577,7 +577,7 @@ function SpecialOperations() {
           <Box>
             {/* Основная информация */}
             <Typography variant="h6" sx={{ mb: 2, fontWeight: 'bold', color: 'primary.main' }}>
-              📍 Основная информация
+              Основная информация
             </Typography>
             
             <Grid container spacing={2} sx={{ mb: 3 }}>
@@ -620,7 +620,7 @@ function SpecialOperations() {
 
             {/* Координаты маршрута */}
             <Typography variant="h6" sx={{ mb: 2, fontWeight: 'bold', color: 'primary.main' }}>
-              🗺️ Координаты маршрута
+              Координаты маршрута
             </Typography>
             
             <Grid container spacing={2} sx={{ mb: 3 }}>
@@ -668,7 +668,7 @@ function SpecialOperations() {
 
             {/* Точка отправления */}
             <Typography variant="h6" sx={{ mb: 2, fontWeight: 'bold', color: 'primary.main' }}>
-              🚀 Точка отправления
+              Точка отправления
             </Typography>
             
             <Grid container spacing={2} sx={{ mb: 3 }}>
@@ -723,7 +723,7 @@ function SpecialOperations() {
 
             {/* Точка назначения */}
             <Typography variant="h6" sx={{ mb: 2, fontWeight: 'bold', color: 'primary.main' }}>
-              🎯 Точка назначения
+              Точка назначения
             </Typography>
             
             <Grid container spacing={2} sx={{ mb: 3 }}>

@@ -208,7 +208,7 @@ function ImportHistory() {
   return (
     <Box>
       <Typography variant="h4" component="h1" gutterBottom align="center">
-        📊 История импорта
+        История импорта
       </Typography>
       
       <Typography variant="body1" color="text.secondary" align="center" sx={{ mb: 4 }}>
@@ -259,7 +259,7 @@ function ImportHistory() {
       <Card sx={{ mb: 3 }}>
         <CardContent>
           <Typography variant="h6" gutterBottom>
-            🔍 Поиск операций
+            Поиск операций
           </Typography>
           
           <Box sx={{ display: 'flex', gap: 2, alignItems: 'center', flexWrap: 'wrap' }}>
@@ -300,7 +300,7 @@ function ImportHistory() {
       <Card>
         <CardContent>
           <Typography variant="h6" gutterBottom>
-            📋 История операций
+            История операций
           </Typography>
           
           {loading ? (

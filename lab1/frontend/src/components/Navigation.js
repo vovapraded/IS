@@ -22,7 +22,7 @@ function Navigation({ activeSection, onSectionChange }) {
       <Container maxWidth="lg">
         <Toolbar>
           <Typography variant="h6" component="div" sx={{ flexGrow: 1 }}>
-            🗺️ Система управления маршрутами
+            Система управления маршрутами
           </Typography>
           
           <Box sx={{ display: 'flex', gap: 1 }}>

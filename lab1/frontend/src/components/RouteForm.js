@@ -125,7 +125,7 @@ function RouteForm({ initialValues, onSubmit, onCancel }) {
     <Paper elevation={3} sx={{ mt: 4 }}>
       <Box sx={{ p: 3 }}>
         <Typography variant="h5" component="h2" gutterBottom>
-          {isEditing ? "✏️ Редактировать маршрут" : "➕ Добавить новый маршрут"}
+          {isEditing ? "Редактировать маршрут" : "Добавить новый маршрут"}
         </Typography>
         <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
           {isEditing ? "Внесите изменения в данные маршрута" : "Заполните все обязательные поля для создания нового маршрута"}
@@ -138,7 +138,7 @@ function RouteForm({ initialValues, onSubmit, onCancel }) {
           <Card variant="outlined" sx={{ mb: 3 }}>
             <CardContent>
               <Typography variant="h6" gutterBottom color="primary">
-                📋 Основная информация
+                Основная информация
               </Typography>
               <Grid container spacing={2}>
                 <Grid item xs={12} md={6}>
@@ -189,7 +189,7 @@ function RouteForm({ initialValues, onSubmit, onCancel }) {
           <Accordion sx={{ mb: 3 }}>
             <AccordionSummary expandIcon={<ExpandMoreIcon />}>
               <Typography variant="h6" color="primary">
-                🎯 Координаты маршрута
+                Координаты маршрута
               </Typography>
             </AccordionSummary>
             <AccordionDetails>
@@ -287,7 +287,7 @@ function RouteForm({ initialValues, onSubmit, onCancel }) {
           <Accordion sx={{ mb: 3 }}>
             <AccordionSummary expandIcon={<ExpandMoreIcon />}>
               <Typography variant="h6" color="primary">
-                🚀 Точка отправления
+                Точка отправления
               </Typography>
             </AccordionSummary>
             <AccordionDetails>
@@ -401,7 +401,7 @@ function RouteForm({ initialValues, onSubmit, onCancel }) {
           <Accordion sx={{ mb: 3 }}>
             <AccordionSummary expandIcon={<ExpandMoreIcon />}>
               <Typography variant="h6" color="primary">
-                🏁 Точка назначения
+                Точка назначения
               </Typography>
             </AccordionSummary>
             <AccordionDetails>

@@ -81,7 +81,7 @@ function RouteDetails() {
   return (
     <Paper elevation={3} sx={{ p: 3 }}>
       <Typography variant="h4" gutterBottom>
-        🔍 Поиск маршрута по ID
+        Поиск маршрута по ID
       </Typography>
       <Typography variant="body1" color="text.secondary" sx={{ mb: 3 }}>
         Введите ID маршрута для получения подробной информации
@@ -136,7 +136,7 @@ function RouteDetails() {
         <Card elevation={2}>
           <CardContent>
             <Typography variant="h5" gutterBottom color="primary">
-              📍 {route.name}
+              {route.name}
             </Typography>
             
             <Grid container spacing={3}>
@@ -145,7 +145,7 @@ function RouteDetails() {
                 <Card variant="outlined" sx={{ height: '100%' }}>
                   <CardContent>
                     <Typography variant="h6" gutterBottom color="primary">
-                      📋 Основная информация
+                      Основная информация
                     </Typography>
                     <Box sx={{ mt: 2 }}>
                       <Typography><strong>ID:</strong> {route.id}</Typography>
@@ -171,7 +171,7 @@ function RouteDetails() {
                 <Card variant="outlined" sx={{ height: '100%' }}>
                   <CardContent>
                     <Typography variant="h6" gutterBottom color="primary">
-                      🎯 Координаты маршрута
+                      Координаты маршрута
                     </Typography>
                     <Box sx={{ mt: 2 }}>
                       <Typography sx={{ fontFamily: 'monospace', fontSize: '1.1rem' }}>
@@ -196,7 +196,7 @@ function RouteDetails() {
                 <Card variant="outlined">
                   <CardContent>
                     <Typography variant="h6" gutterBottom color="primary">
-                      🚀 Точка отправления
+                      Точка отправления
                     </Typography>
                     <Box sx={{ mt: 2 }}>
                       <Typography sx={{ fontFamily: 'monospace' }}>
@@ -223,7 +223,7 @@ function RouteDetails() {
                 <Card variant="outlined">
                   <CardContent>
                     <Typography variant="h6" gutterBottom color="primary">
-                      🏁 Точка назначения
+                      Точка назначения
                     </Typography>
                     <Box sx={{ mt: 2 }}>
                       <Typography sx={{ fontFamily: 'monospace' }}>

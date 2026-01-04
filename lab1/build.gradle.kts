@@ -21,7 +21,7 @@ repositories {
 val jakartaVersion = "3.1.0"
 val weldVersion = "5.0.0.Final"
 val hibernateVersion = "6.3.0.Final"
-val lombokVersion = "1.18.30" // ✅ актуальная версия на 2024
+val lombokVersion = "1.18.30" // актуальная версия на 2024
 
 dependencies {
     // CDI (Weld SE для локального запуска)
@@ -52,7 +52,7 @@ dependencies {
     implementation("org.jboss.logging:jboss-logging:3.5.1.Final")
     implementation("org.slf4j:slf4j-simple:2.0.9")
 
-    // ✅ Lombok — только на compile-time
+    // Lombok — только на compile-time
     compileOnly("org.projectlombok:lombok:$lombokVersion")
     annotationProcessor("org.projectlombok:lombok:$lombokVersion")
 
@@ -84,5 +84,5 @@ tasks.war {
     archiveBaseName.set("server")
     // By default Gradle WAR includes main outputs and runtimeClasspath deps under WEB-INF/lib
     // Keep embedded libs to make it self-contained.
-    // ⚠️ Если деплоить на WildFly, лучше вынести jakarta.* как providedCompile.
+    // Если деплоить на WildFly, лучше вынести jakarta.* как providedCompile.
 }

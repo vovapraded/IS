@@ -156,7 +156,7 @@ function ImportRoutes() {
   return (
     <Box>
       <Typography variant="h4" component="h1" gutterBottom align="center">
-        📁 Импорт маршрутов
+        Импорт маршрутов
       </Typography>
       
       <Typography variant="body1" color="text.secondary" align="center" sx={{ mb: 4 }}>
@@ -168,7 +168,7 @@ function ImportRoutes() {
         <CardContent>
           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
             <Typography variant="h6">
-              📋 Формат файла
+              Формат файла
             </Typography>
             <Box sx={{ display: 'flex', gap: 1 }}>
               <Button 
@@ -204,7 +204,7 @@ function ImportRoutes() {
       <Card sx={{ mb: 3 }}>
         <CardContent>
           <Typography variant="h6" gutterBottom>
-            🚀 Импорт данных
+            Импорт данных
           </Typography>
           
           {/* Поле имени пользователя */}
@@ -359,7 +359,7 @@ function ImportRoutes() {
         fullWidth
       >
         <DialogTitle>
-          📋 Подробная инструкция по импорту
+          Подробная инструкция по импорту
         </DialogTitle>
         <DialogContent>
           <Typography variant="h6" gutterBottom>

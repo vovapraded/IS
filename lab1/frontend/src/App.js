@@ -53,7 +53,7 @@ function App() {
       setSortDirection(direction);
       setLastUpdateTime(new Date().toLocaleTimeString("ru-RU"));
       
-      console.debug('🚀 Loaded paginated routes:', {
+      console.debug('Loaded paginated routes:', {
         page: page,
         totalElements: response.data.totalElements,
         totalPages: response.data.totalPages,
@@ -204,30 +204,30 @@ function App() {
         const errorData = err.response.data;
         console.log("409 Conflict error data:", errorData);
         if (errorData.type === "DUPLICATE_NAME") {
-          setError(`❌ ${errorData.error}`);
+          setError(`${errorData.error}`);
         } else if (errorData.type === "DUPLICATE_COORDINATES") {
-          setError(`📍 ${errorData.error}`);
+          setError(`${errorData.error}`);
         } else {
-          setError(`⚠️ ${errorData.error || "Конфликт данных. Проверьте уникальность введенных значений."}`);
+          setError(`${errorData.error || "Конфликт данных. Проверьте уникальность введенных значений."}`);
         }
       } else if (err.response && err.response.status === 400) {
         const errorData = err.response.data;
         console.log("400 Bad Request error data:", errorData);
         if (errorData.type === "INVALID_ARGUMENT") {
-          setError(`🔧 ${errorData.error}`);
+          setError(`${errorData.error}`);
         } else {
-          setError(`⚠️ ${errorData.error || "Ошибка валидации данных. Проверьте корректность введенных значений."}`);
+          setError(`${errorData.error || "Ошибка валидации данных. Проверьте корректность введенных значений."}`);
         }
       } else if (err.response && err.response.status === 500) {
         const errorData = err.response.data;
         console.log("500 Internal Server error data:", errorData);
-        setError(`💥 ${errorData.error || "Внутренняя ошибка сервера. Попробуйте еще раз."}`);
+        setError(`${errorData.error || "Внутренняя ошибка сервера. Попробуйте еще раз."}`);
       } else if (err.response && err.response.data && err.response.data.error) {
         console.log("Other response error:", err.response.data);
-        setError(`❌ ${err.response.data.error}`);
+        setError(`${err.response.data.error}`);
       } else {
         console.log("Network or other error");
-        setError("❌ Не удалось сохранить маршрут. Проверьте соединение с сервером и попробуйте еще раз.");
+        setError("Не удалось сохранить маршрут. Проверьте соединение с сервером и попробуйте еще раз.");
       }
     }
   };
@@ -253,7 +253,7 @@ function App() {
           <>
             <Container maxWidth="lg" sx={{ py: 2 }}>
               <Typography variant="h4" component="h1" gutterBottom align="center">
-                📋 Управление маршрутами
+                Управление маршрутами
               </Typography>
               
               <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 4 }}>
@@ -270,7 +270,7 @@ function App() {
                     onClick={() => setAutoRefreshEnabled(!autoRefreshEnabled)}
                     color={autoRefreshEnabled ? "success" : "default"}
                   >
-                    {autoRefreshEnabled ? "🔄 Автообновление" : "⏸️ Обновление отключено"}
+                    {autoRefreshEnabled ? "Автообновление" : "Обновление отключено"}
                   </Button>
                 </Box>
               </Box>
