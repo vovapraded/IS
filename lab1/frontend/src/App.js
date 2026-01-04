@@ -241,7 +241,40 @@ function App() {
       }
     } catch (err) {
       console.error("Ошибка сохранения маршрута:", err);
-      setError("Не удалось сохранить маршрут. Проверьте введенные данные.");
+      console.error("Response status:", err.response?.status);
+      console.error("Response data:", err.response?.data);
+      console.error("Full error:", err);
+      
+      // Обработка ошибок валидации уникальности
+      if (err.response && err.response.status === 409) {
+        const errorData = err.response.data;
+        console.log("409 Conflict error data:", errorData);
+        if (errorData.type === "DUPLICATE_NAME") {
+          setError(`❌ ${errorData.error}`);
+        } else if (errorData.type === "DUPLICATE_COORDINATES") {
+          setError(`📍 ${errorData.error}`);
+        } else {
+          setError(`⚠️ ${errorData.error || "Конфликт данных. Проверьте уникальность введенных значений."}`);
+        }
+      } else if (err.response && err.response.status === 400) {
+        const errorData = err.response.data;
+        console.log("400 Bad Request error data:", errorData);
+        if (errorData.type === "INVALID_ARGUMENT") {
+          setError(`🔧 ${errorData.error}`);
+        } else {
+          setError(`⚠️ ${errorData.error || "Ошибка валидации данных. Проверьте корректность введенных значений."}`);
+        }
+      } else if (err.response && err.response.status === 500) {
+        const errorData = err.response.data;
+        console.log("500 Internal Server error data:", errorData);
+        setError(`💥 ${errorData.error || "Внутренняя ошибка сервера. Попробуйте еще раз."}`);
+      } else if (err.response && err.response.data && err.response.data.error) {
+        console.log("Other response error:", err.response.data);
+        setError(`❌ ${err.response.data.error}`);
+      } else {
+        console.log("Network or other error");
+        setError("❌ Не удалось сохранить маршрут. Проверьте соединение с сервером и попробуйте еще раз.");
+      }
     }
   };
 

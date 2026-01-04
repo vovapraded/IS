@@ -422,6 +422,85 @@ public class RouteRepositoryMB {
             .getResultList();
     }
     
+    // Методы для проверки уникальности
+    
+    /**
+     * Найти маршрут по имени
+     */
+    public Route findByName(String name) {
+        System.out.println("🔍 REPO: Searching for route by name: '" + name + "'");
+        List<Route> results = em.createQuery(
+            "SELECT r FROM Route r WHERE r.name = :name",
+            Route.class)
+            .setParameter("name", name)
+            .setMaxResults(1)
+            .getResultList();
+        
+        System.out.println("🔎 REPO: Found " + results.size() + " routes with name: '" + name + "'");
+        Route result = results.isEmpty() ? null : results.get(0);
+        if (result != null) {
+            System.out.println("❌ REPO: Found existing route - ID: " + result.getId() + ", Name: '" + result.getName() + "'");
+        } else {
+            System.out.println("✅ REPO: No route found with name: '" + name + "'");
+        }
+        return result;
+    }
+    
+    /**
+     * Найти маршрут по имени, исключая маршрут с указанным ID (для обновления)
+     */
+    public Route findByNameExcluding(String name, Integer excludeRouteId) {
+        List<Route> results = em.createQuery(
+            "SELECT r FROM Route r WHERE r.name = :name AND r.id != :excludeId",
+            Route.class)
+            .setParameter("name", name)
+            .setParameter("excludeId", excludeRouteId)
+            .setMaxResults(1)
+            .getResultList();
+        
+        return results.isEmpty() ? null : results.get(0);
+    }
+    
+    /**
+     * Найти маршрут по координатам
+     */
+    public Route findByCoordinates(Double x, Double y) {
+        System.out.println("🔍 REPO: Searching for route by coordinates: (" + x + ", " + y + ")");
+        List<Route> results = em.createQuery(
+            "SELECT r FROM Route r WHERE r.coordinates.x = :x AND r.coordinates.y = :y",
+            Route.class)
+            .setParameter("x", x)
+            .setParameter("y", y)
+            .setMaxResults(1)
+            .getResultList();
+        
+        System.out.println("🔎 REPO: Found " + results.size() + " routes with coordinates: (" + x + ", " + y + ")");
+        Route result = results.isEmpty() ? null : results.get(0);
+        if (result != null) {
+            System.out.println("❌ REPO: Found existing route - ID: " + result.getId() + ", Coordinates: (" +
+                result.getCoordinates().getX() + ", " + result.getCoordinates().getY() + ")");
+        } else {
+            System.out.println("✅ REPO: No route found with coordinates: (" + x + ", " + y + ")");
+        }
+        return result;
+    }
+    
+    /**
+     * Найти маршрут по координатам, исключая маршрут с указанным ID (для обновления)
+     */
+    public Route findByCoordinatesExcluding(Double x, Double y, Integer excludeRouteId) {
+        List<Route> results = em.createQuery(
+            "SELECT r FROM Route r WHERE r.coordinates.x = :x AND r.coordinates.y = :y AND r.id != :excludeId",
+            Route.class)
+            .setParameter("x", x)
+            .setParameter("y", y)
+            .setParameter("excludeId", excludeRouteId)
+            .setMaxResults(1)
+            .getResultList();
+        
+        return results.isEmpty() ? null : results.get(0);
+    }
+    
     // Вспомогательные методы для пагинации
     
     private void appendSortClause(StringBuilder jpql, String sortBy, String sortDirection) {
