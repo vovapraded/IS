@@ -83,7 +83,45 @@ public class RouteRepositoryMB {
             throw new IllegalArgumentException("Route not found with id: " + dto.id());
         }
 
+        // Обновляем базовые поля через маппер
         RouteMapper.updateEntityFromDto(existing, dto);
+        
+        // Обрабатываем связанные объекты через EntityManager
+        if (dto.coordinates() != null && dto.coordinates().id() != null) {
+            org.example.domain.coordinates.entity.Coordinates coordinates =
+                em.find(org.example.domain.coordinates.entity.Coordinates.class, dto.coordinates().id());
+            if (coordinates != null) {
+                // Обновляем поля координат
+                coordinates.setX(dto.coordinates().x());
+                coordinates.setY(dto.coordinates().y());
+                existing.setCoordinates(coordinates);
+            }
+        }
+        
+        if (dto.from() != null && dto.from().id() != null) {
+            org.example.domain.location.entity.Location fromLocation =
+                em.find(org.example.domain.location.entity.Location.class, dto.from().id());
+            if (fromLocation != null) {
+                // Обновляем поля локации from
+                fromLocation.setX(dto.from().x());
+                fromLocation.setY(dto.from().y());
+                fromLocation.setName(dto.from().name());
+                existing.setFrom(fromLocation);
+            }
+        }
+        
+        if (dto.to() != null && dto.to().id() != null) {
+            org.example.domain.location.entity.Location toLocation =
+                em.find(org.example.domain.location.entity.Location.class, dto.to().id());
+            if (toLocation != null) {
+                // Обновляем поля локации to
+                toLocation.setX(dto.to().x());
+                toLocation.setY(dto.to().y());
+                toLocation.setName(dto.to().name());
+                existing.setTo(toLocation);
+            }
+        }
+        
         // existing уже managed, изменения автоматически сохранятся при commit
         return existing;
     }

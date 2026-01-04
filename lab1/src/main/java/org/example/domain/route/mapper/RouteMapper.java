@@ -60,12 +60,12 @@ public class RouteMapper {
         }
         
         entity.setName(dto.name());
-        entity.setCoordinates(CoordinatesMapper.toEntity(dto.coordinates()));
-        entity.setFrom(LocationMapper.toEntity(dto.from()));
-        entity.setTo(LocationMapper.toEntity(dto.to()));
+        // Не создаем новые объекты для связанных сущностей
+        // Связанные объекты должны обрабатываться в репозитории через EntityManager
         entity.setDistance(dto.distance());
         entity.setRating(dto.rating());
         // ID и creationDate не изменяем при обновлении
+        // coordinates, from, to будут обновлены в репозитории
     }
 
 }
