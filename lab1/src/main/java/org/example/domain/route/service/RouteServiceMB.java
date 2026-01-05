@@ -59,10 +59,10 @@ public class RouteServiceMB {
             return; // пустые имена не проверяем
         }
         
-        // Проверяем прямо в EntityManager в текущей транзакции
-        log.info("VALIDATION: Searching for existing route with name in transaction: '{}'", name.trim());
+        // Проверяем с блокировкой для предотвращения race condition
+        log.info("VALIDATION: Searching for existing route with name with lock: '{}'", name.trim());
         List<Route> existingRoutes = em.createQuery(
-            "SELECT r FROM Route r WHERE r.name = :name", Route.class)
+            "SELECT r FROM Route r WHERE r.name = :name FOR UPDATE", Route.class)
             .setParameter("name", name.trim())
             .setMaxResults(1)
             .getResultList();
@@ -100,10 +100,10 @@ public class RouteServiceMB {
         }
         
         try {
-            // Проверяем прямо в EntityManager в текущей транзакции
-            log.info("COORDINATES VALIDATION: Searching for existing route with coordinates in transaction: ({}, {})", x, y);
+            // Проверяем с блокировкой для предотвращения race condition
+            log.info("COORDINATES VALIDATION: Searching for existing route with coordinates with lock: ({}, {})", x, y);
             List<Route> existingRoutes = em.createQuery(
-                "SELECT r FROM Route r WHERE r.coordinates.x = :x AND r.coordinates.y = :y", Route.class)
+                "SELECT r FROM Route r WHERE r.coordinates.x = :x AND r.coordinates.y = :y FOR UPDATE", Route.class)
                 .setParameter("x", x.floatValue())
                 .setParameter("y", y)
                 .setMaxResults(1)
