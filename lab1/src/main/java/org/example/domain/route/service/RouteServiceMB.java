@@ -50,22 +50,29 @@ public class RouteServiceMB {
     // Методы валидации уникальности
     
     /**
-     * Проверяет уникальность имени маршрута при создании
+     * Проверяет уникальность имени маршрута при создании (в рамках транзакции)
      */
-    private void validateRouteNameUniqueness(String name) {
-        log.info("VALIDATION: Checking route name uniqueness for: '{}'", name);
+    private void validateRouteNameUniquenessInTransaction(String name) {
+        log.info("VALIDATION: Checking route name uniqueness in transaction for: '{}'", name);
         if (name == null || name.trim().isEmpty()) {
             log.info("VALIDATION: Name is empty, skipping uniqueness check");
             return; // пустые имена не проверяем
         }
         
-        log.info("VALIDATION: Searching for existing route with name: '{}'", name.trim());
-        Route existingRoute = routeRepository.findByName(name.trim());
-        if (existingRoute != null) {
+        // Проверяем прямо в EntityManager в текущей транзакции
+        log.info("VALIDATION: Searching for existing route with name in transaction: '{}'", name.trim());
+        List<Route> existingRoutes = em.createQuery(
+            "SELECT r FROM Route r WHERE r.name = :name", Route.class)
+            .setParameter("name", name.trim())
+            .setMaxResults(1)
+            .getResultList();
+            
+        if (!existingRoutes.isEmpty()) {
+            Route existingRoute = existingRoutes.get(0);
             log.error("VALIDATION: Route with name '{}' already exists with ID: {}", name.trim(), existingRoute.getId());
             throw new RouteNameAlreadyExistsException(name.trim(), existingRoute.getId());
         }
-        log.info("VALIDATION: Route name '{}' is unique", name.trim());
+        log.info("VALIDATION: Route name '{}' is unique in transaction", name.trim());
     }
     
     /**
@@ -83,27 +90,34 @@ public class RouteServiceMB {
     }
     
     /**
-     * Проверяет уникальность координат маршрута при создании
+     * Проверяет уникальность координат маршрута при создании (в рамках транзакции)
      */
-    private void validateRouteCoordinatesUniqueness(Double x, Double y) {
-        log.info("COORDINATES VALIDATION: Checking coordinates uniqueness for: ({}, {})", x, y);
+    private void validateRouteCoordinatesUniquenessInTransaction(Double x, Double y) {
+        log.info("COORDINATES VALIDATION: Checking coordinates uniqueness in transaction for: ({}, {})", x, y);
         if (x == null || y == null) {
             log.info("COORDINATES VALIDATION: X or Y coordinate is null, skipping uniqueness check");
             return; // некорректные координаты не проверяем
         }
         
         try {
-            log.info("COORDINATES VALIDATION: Searching for existing route with coordinates: ({}, {})", x, y);
-            Route existingRoute = routeRepository.findByCoordinates(x, y);
+            // Проверяем прямо в EntityManager в текущей транзакции
+            log.info("COORDINATES VALIDATION: Searching for existing route with coordinates in transaction: ({}, {})", x, y);
+            List<Route> existingRoutes = em.createQuery(
+                "SELECT r FROM Route r WHERE r.coordinates.x = :x AND r.coordinates.y = :y", Route.class)
+                .setParameter("x", x.floatValue())
+                .setParameter("y", y)
+                .setMaxResults(1)
+                .getResultList();
             
-            if (existingRoute != null) {
+            if (!existingRoutes.isEmpty()) {
+                Route existingRoute = existingRoutes.get(0);
                 log.error("COORDINATES VALIDATION: Route with coordinates ({}, {}) already exists with ID: {}",
                         x, y, existingRoute.getId());
                 RouteCoordinatesAlreadyExistException exception = new RouteCoordinatesAlreadyExistException(x.floatValue(), y, existingRoute.getId());
                 log.error("COORDINATES VALIDATION: Throwing exception: {}", exception.getMessage());
                 throw exception;
             }
-            log.info("COORDINATES VALIDATION: Coordinates ({}, {}) are unique", x, y);
+            log.info("COORDINATES VALIDATION: Coordinates ({}, {}) are unique in transaction", x, y);
         } catch (RouteCoordinatesAlreadyExistException e) {
             log.error("COORDINATES VALIDATION: Re-throwing coordinates exception: {}", e.getMessage());
             throw e; // Перебрасываем наше исключение
@@ -146,19 +160,20 @@ public class RouteServiceMB {
         }
     }
 
+    @Transactional
     public RouteDto createRoute(RouteCreateDto dto) {
         log.info("SERVICE: Starting route creation: {}", dto);
         
         try {
-            // Проверяем уникальность имени маршрута
-            log.info("SERVICE: Validating route name uniqueness: {}", dto.name());
-            validateRouteNameUniqueness(dto.name());
+            // Проверяем уникальность имени маршрута в транзакции
+            log.info("SERVICE: Validating route name uniqueness in transaction: {}", dto.name());
+            validateRouteNameUniquenessInTransaction(dto.name());
             log.info("SERVICE: Name validation passed");
             
-            // Проверяем уникальность координат маршрута
+            // Проверяем уникальность координат маршрута в транзакции
             if (dto.coordinates() != null) {
-                log.info("SERVICE: Validating route coordinates uniqueness: ({}, {})", dto.coordinates().x(), dto.coordinates().y());
-                validateRouteCoordinatesUniqueness((double)dto.coordinates().x(), dto.coordinates().y());
+                log.info("SERVICE: Validating route coordinates uniqueness in transaction: ({}, {})", dto.coordinates().x(), dto.coordinates().y());
+                validateRouteCoordinatesUniquenessInTransaction((double)dto.coordinates().x(), dto.coordinates().y());
                 log.info("SERVICE: Coordinates validation passed");
             }
             
@@ -684,11 +699,11 @@ public class RouteServiceMB {
                                            Long distance, Long rating) {
         log.info("Adding route between locations {} and {}", fromName, toName);
         
-        // Проверяем уникальность имени маршрута
-        validateRouteNameUniqueness(routeName);
+        // Проверяем уникальность имени маршрута в транзакции
+        validateRouteNameUniquenessInTransaction(routeName);
         
-        // Проверяем уникальность координат маршрута
-        validateRouteCoordinatesUniqueness(coordX, coordY);
+        // Проверяем уникальность координат маршрута в транзакции
+        validateRouteCoordinatesUniquenessInTransaction(coordX, coordY);
         
         // Используем существующий метод createRoute с правильной структурой
         CoordinatesDto coordinatesDto = new CoordinatesDto(null, coordX.floatValue(), coordY, null, null);
