@@ -57,40 +57,66 @@ public class LocationServiceMB {
     }
 
     public LocationDto findOrCreate(LocationDto dto) {
-        // Проверяем, существует ли уже такая локация
+        // Простой подход: сначала ищем, потом создаем
         Optional<Location> existing = locationRepository.findByXAndYAndName(dto.x(), dto.y(), dto.name());
         if (existing.isPresent()) {
             return LocationMapper.toDto(existing.get());
         }
         
-        // Создаем новую локацию
-        Location newLocation = Location.builder()
-                .x(dto.x())
-                .y(dto.y())
-                .name(dto.name())
-                .build();
-        
-        Location saved = locationRepository.save(newLocation);
-        return LocationMapper.toDto(saved);
+        // Пытаемся создать новую локацию
+        try {
+            Location newLocation = Location.builder()
+                    .x(dto.x())
+                    .y(dto.y())
+                    .name(dto.name())
+                    .build();
+            
+            Location saved = locationRepository.save(newLocation);
+            return LocationMapper.toDto(saved);
+        } catch (Exception e) {
+            // Если constraint violation - ищем заново (другой поток уже создал)
+            if (e.getCause() != null && e.getCause().getMessage() != null &&
+                e.getCause().getMessage().contains("duplicate key")) {
+                
+                Optional<Location> retry = locationRepository.findByXAndYAndName(dto.x(), dto.y(), dto.name());
+                if (retry.isPresent()) {
+                    return LocationMapper.toDto(retry.get());
+                }
+            }
+            throw e;
+        }
     }
 
     public LocationDto findOrCreateWithOwner(LocationDto dto, Route ownerRoute) {
-        // Проверяем, существует ли уже такая локация
+        // Простой подход: сначала ищем, потом создаем
         Optional<Location> existing = locationRepository.findByXAndYAndName(dto.x(), dto.y(), dto.name());
         if (existing.isPresent()) {
             return LocationMapper.toDto(existing.get());
         }
         
-        // Создаем новую локацию с владельцем
-        Location newLocation = Location.builder()
-                .x(dto.x())
-                .y(dto.y())
-                .name(dto.name())
-                .ownerRoute(ownerRoute)
-                .build();
-        
-        Location saved = locationRepository.save(newLocation);
-        return LocationMapper.toDto(saved);
+        // Пытаемся создать новую локацию с владельцем
+        try {
+            Location newLocation = Location.builder()
+                    .x(dto.x())
+                    .y(dto.y())
+                    .name(dto.name())
+                    .ownerRoute(ownerRoute)
+                    .build();
+            
+            Location saved = locationRepository.save(newLocation);
+            return LocationMapper.toDto(saved);
+        } catch (Exception e) {
+            // Если constraint violation - ищем заново (другой поток уже создал)
+            if (e.getCause() != null && e.getCause().getMessage() != null &&
+                e.getCause().getMessage().contains("duplicate key")) {
+                
+                Optional<Location> retry = locationRepository.findByXAndYAndName(dto.x(), dto.y(), dto.name());
+                if (retry.isPresent()) {
+                    return LocationMapper.toDto(retry.get());
+                }
+            }
+            throw e;
+        }
     }
 
     public void transferOwnership(Integer locationId, Route newOwner) {

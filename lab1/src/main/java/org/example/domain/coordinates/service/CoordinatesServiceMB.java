@@ -45,66 +45,69 @@ public class CoordinatesServiceMB {
     }
 
     public CoordinatesDto findOrCreate(CoordinatesDto dto) {
-        System.out.println("=== DEBUG: findOrCreate called ===");
-        System.out.println("Input DTO: " + dto);
-        System.out.println("DTO x value: " + dto.x() + " (class: float)");
-        System.out.println("DTO y value: " + dto.y() + " (class: " + (dto.y() != null ? dto.y().getClass().getSimpleName() : "null") + ")");
-        
-        // Проверяем, существуют ли уже такие координаты
+        // Простой подход: сначала ищем, потом создаем
         Optional<Coordinates> existing = coordinatesRepository.findByXAndY(dto.x(), dto.y());
         if (existing.isPresent()) {
-            System.out.println("Found existing coordinates: " + existing.get());
             return CoordinatesMapper.toDto(existing.get());
         }
         
-        // Создаем новые координаты
-        System.out.println("Creating new coordinates...");
-        Coordinates newCoordinates = Coordinates.builder()
-                .x(dto.x())
-                .y(dto.y())
-                .build();
-        
-        System.out.println("Built coordinates entity: x=" + newCoordinates.getX() + ", y=" + newCoordinates.getY());
-        
-        Coordinates saved = coordinatesRepository.save(newCoordinates);
-        System.out.println("Saved coordinates: " + saved);
-        return CoordinatesMapper.toDto(saved);
+        // Пытаемся создать новые координаты
+        try {
+            Coordinates newCoordinates = Coordinates.builder()
+                    .x(dto.x())
+                    .y(dto.y())
+                    .build();
+            
+            Coordinates saved = coordinatesRepository.save(newCoordinates);
+            return CoordinatesMapper.toDto(saved);
+        } catch (Exception e) {
+            // Если constraint violation - ищем заново (другой поток уже создал)
+            if (e.getCause() != null && e.getCause().getMessage() != null &&
+                e.getCause().getMessage().contains("duplicate key")) {
+                
+                Optional<Coordinates> retry = coordinatesRepository.findByXAndY(dto.x(), dto.y());
+                if (retry.isPresent()) {
+                    return CoordinatesMapper.toDto(retry.get());
+                }
+            }
+            throw e;
+        }
     }
 
     public CoordinatesDto findOrCreateWithOwner(CoordinatesDto dto, Route ownerRoute) {
-        System.out.println("=== DEBUG: findOrCreateWithOwner called ===");
-        System.out.println("Input DTO: " + dto);
-        System.out.println("DTO x value: " + dto.x() + " (class: float)");
-        System.out.println("DTO y value: " + dto.y() + " (class: " + (dto.y() != null ? dto.y().getClass().getSimpleName() : "null") + ")");
-        System.out.println("Owner route: " + (ownerRoute != null ? ownerRoute.getId() + ":" + ownerRoute.getName() : "null"));
-        
-        // Проверяем, существуют ли уже такие координаты
+        // Простой подход: сначала ищем, потом создаем
         Optional<Coordinates> existing = coordinatesRepository.findByXAndY(dto.x(), dto.y());
         if (existing.isPresent()) {
-            System.out.println("Found existing coordinates: " + existing.get());
             return CoordinatesMapper.toDto(existing.get());
         }
         
-        // Создаем новые координаты с владельцем
-        System.out.println("Creating new coordinates with owner...");
-        Coordinates newCoordinates = Coordinates.builder()
-                .x(dto.x())
-                .y(dto.y())
-                .ownerRoute(ownerRoute)
-                .build();
-        
-        System.out.println("Built coordinates entity: x=" + newCoordinates.getX() + ", y=" + newCoordinates.getY() + ", owner=" + (newCoordinates.getOwnerRoute() != null ? newCoordinates.getOwnerRoute().getId() : "null"));
-        
-        Coordinates saved = coordinatesRepository.save(newCoordinates);
-        System.out.println("Saved coordinates: " + saved);
-        return CoordinatesMapper.toDto(saved);
+        // Пытаемся создать новые координаты с владельцем
+        try {
+            Coordinates newCoordinates = Coordinates.builder()
+                    .x(dto.x())
+                    .y(dto.y())
+                    .ownerRoute(ownerRoute)
+                    .build();
+            
+            Coordinates saved = coordinatesRepository.save(newCoordinates);
+            return CoordinatesMapper.toDto(saved);
+        } catch (Exception e) {
+            // Если constraint violation - ищем заново (другой поток уже создал)
+            if (e.getCause() != null && e.getCause().getMessage() != null &&
+                e.getCause().getMessage().contains("duplicate key")) {
+                
+                Optional<Coordinates> retry = coordinatesRepository.findByXAndY(dto.x(), dto.y());
+                if (retry.isPresent()) {
+                    return CoordinatesMapper.toDto(retry.get());
+                }
+            }
+            throw e;
+        }
     }
 
     public void transferOwnership(Integer coordinatesId, Route newOwner) {
-        // Загружаем coordinates через наш EntityManager
         Coordinates coordinates = em.find(Coordinates.class, coordinatesId);
         if (coordinates != null) {
-            // Если newOwner из другого контекста, приводим к нашему
             Route managedOwner = null;
             if (newOwner != null) {
                 if (em.contains(newOwner)) {
@@ -120,22 +123,17 @@ public class CoordinatesServiceMB {
     }
 
     public void transferOwnershipById(Integer coordinatesId, Integer newOwnerId) {
-        // Загружаем coordinates через наш EntityManager для единого контекста
         Coordinates coordinates = em.find(Coordinates.class, coordinatesId);
         if (coordinates != null) {
             Route newOwner = null;
             if (newOwnerId != null) {
-                // Используем find для получения полноценного managed объекта
-                // Это решает проблему с TransientObjectException
                 newOwner = em.find(Route.class, newOwnerId);
                 if (newOwner == null) {
                     throw new IllegalArgumentException("Route not found with id: " + newOwnerId);
                 }
             }
             
-            // Оба объекта теперь из одного EntityManager контекста
             coordinates.setOwnerRoute(newOwner);
-            // Сохраняем через EntityManager для консистентности
             em.merge(coordinates);
         }
     }

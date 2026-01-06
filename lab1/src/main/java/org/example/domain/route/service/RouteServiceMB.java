@@ -1,10 +1,16 @@
 package org.example.domain.route.service;
 
+import jakarta.ejb.AccessTimeout;
+import jakarta.ejb.ConcurrencyManagement;
+import jakarta.ejb.ConcurrencyManagementType;
+import jakarta.ejb.Lock;
+import jakarta.ejb.LockType;
 import jakarta.ejb.Stateless;
 import jakarta.inject.Inject;
-import jakarta.transaction.Transactional;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
+
+import java.util.concurrent.TimeUnit;
 import lombok.extern.slf4j.Slf4j;
 import org.example.domain.route.dto.*;
 import org.example.domain.route.entity.Route;
@@ -19,6 +25,8 @@ import org.example.domain.location.repository.LocationRepositoryMB;
 import org.example.domain.route.dto.RouteCursorPageDto;
 import org.example.exception.RouteNameAlreadyExistsException;
 import org.example.exception.RouteCoordinatesAlreadyExistException;
+import org.example.exception.RouteZeroDistanceException;
+import org.example.exception.RouteConflictException;
 
 import java.util.HashMap;
 import java.util.List;
@@ -27,6 +35,8 @@ import java.util.stream.Collectors;
 
 @Slf4j
 @Stateless
+@ConcurrencyManagement(ConcurrencyManagementType.CONTAINER)
+@AccessTimeout(value = 30, unit = TimeUnit.SECONDS)
 public class RouteServiceMB {
 
     @Inject
@@ -50,7 +60,20 @@ public class RouteServiceMB {
     // Методы валидации уникальности
     
     /**
+     * Нормализует название маршрута для проверки уникальности
+     */
+    private String normalizeRouteName(String name) {
+        if (name == null) {
+            return null;
+        }
+        // Убираем лишние пробелы, приводим к нижнему регистру для проверки уникальности
+        return name.trim().toLowerCase().replaceAll("\\s+", " ");
+    }
+    
+    /**
      * Проверяет уникальность имени маршрута при создании (в рамках транзакции)
+     * Использует нормализованное сравнение имен для предотвращения дубликатов
+     * Применяет полную блокировку таблицы для предотвращения race conditions
      */
     private void validateRouteNameUniquenessInTransaction(String name) {
         log.info("VALIDATION: Checking route name uniqueness in transaction for: '{}'", name);
@@ -59,39 +82,66 @@ public class RouteServiceMB {
             return; // пустые имена не проверяем
         }
         
-        // Проверяем с пессимистической блокировкой для предотвращения race condition
-        log.info("VALIDATION: Searching for existing route with name with pessimistic lock: '{}'", name.trim());
-        List<Route> existingRoutes = em.createQuery(
-            "SELECT r FROM Route r WHERE r.name = :name", Route.class)
-            .setParameter("name", name.trim())
+        String normalizedName = normalizeRouteName(name);
+        log.info("VALIDATION: Normalized name for uniqueness check: '{}'", normalizedName);
+        
+        // Блокируем ВСЕ записи в таблице Route для предотвращения race condition
+        log.info("VALIDATION: Applying table-level pessimistic lock for route uniqueness check");
+        List<Route> allRoutes = em.createQuery("SELECT r FROM Route r", Route.class)
             .setLockMode(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)
-            .setMaxResults(1)
             .getResultList();
-            
-        if (!existingRoutes.isEmpty()) {
-            Route existingRoute = existingRoutes.get(0);
-            log.error("VALIDATION: Route with name '{}' already exists with ID: {}", name.trim(), existingRoute.getId());
-            throw new RouteNameAlreadyExistsException(name.trim(), existingRoute.getId());
+        
+        // Проверяем нормализованные имена на Java-стороне для точного сравнения
+        for (Route candidate : allRoutes) {
+            if (candidate.getName() != null) {
+                String candidateNormalizedName = normalizeRouteName(candidate.getName());
+                if (normalizedName.equals(candidateNormalizedName)) {
+                    log.error("VALIDATION: Route with normalized name '{}' already exists with ID: {} (original name: '{}')",
+                             normalizedName, candidate.getId(), candidate.getName());
+                    throw new RouteNameAlreadyExistsException(name.trim(), candidate.getId());
+                }
+            }
         }
-        log.info("VALIDATION: Route name '{}' is unique in transaction", name.trim());
+        log.info("VALIDATION: Normalized route name '{}' is unique in transaction", normalizedName);
     }
     
     /**
      * Проверяет уникальность имени маршрута при обновлении
+     * Использует нормализованное сравнение имен для предотвращения дубликатов
+     * Применяет полную блокировку таблицы для предотвращения race conditions
      */
     private void validateRouteNameUniquenessForUpdate(String name, Integer excludeRouteId) {
+        log.info("UPDATE VALIDATION: Checking route name uniqueness for update: '{}', excluding route ID: {}", name, excludeRouteId);
         if (name == null || name.trim().isEmpty()) {
             return; // пустые имена не проверяем
         }
         
-        Route existingRoute = routeRepository.findByNameExcluding(name.trim(), excludeRouteId);
-        if (existingRoute != null) {
-            throw new RouteNameAlreadyExistsException(name.trim(), existingRoute.getId());
+        String normalizedName = normalizeRouteName(name);
+        log.info("UPDATE VALIDATION: Normalized name for uniqueness check: '{}'", normalizedName);
+        
+        // Блокируем ВСЕ записи в таблице Route для предотвращения race condition
+        log.info("UPDATE VALIDATION: Applying table-level pessimistic lock for route uniqueness check");
+        List<Route> allRoutes = em.createQuery("SELECT r FROM Route r", Route.class)
+            .setLockMode(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)
+            .getResultList();
+        
+        // Проверяем нормализованные имена на Java-стороне для точного сравнения
+        for (Route candidate : allRoutes) {
+            if (candidate.getName() != null && !candidate.getId().equals(excludeRouteId)) {
+                String candidateNormalizedName = normalizeRouteName(candidate.getName());
+                if (normalizedName.equals(candidateNormalizedName)) {
+                    log.error("UPDATE VALIDATION: Route with normalized name '{}' already exists with ID: {} (original name: '{}'), excluding: {}",
+                             normalizedName, candidate.getId(), candidate.getName(), excludeRouteId);
+                    throw new RouteNameAlreadyExistsException(name.trim(), candidate.getId());
+                }
+            }
         }
+        log.info("UPDATE VALIDATION: Normalized route name '{}' is unique for update", normalizedName);
     }
     
     /**
      * Проверяет уникальность координат маршрута при создании (в рамках транзакции)
+     * Применяет полную блокировку таблицы для предотвращения race conditions
      */
     private void validateRouteCoordinatesUniquenessInTransaction(Double x, Double y) {
         log.info("COORDINATES VALIDATION: Checking coordinates uniqueness in transaction for: ({}, {})", x, y);
@@ -101,23 +151,28 @@ public class RouteServiceMB {
         }
         
         try {
-            // Проверяем с пессимистической блокировкой для предотвращения race condition
-            log.info("COORDINATES VALIDATION: Searching for existing route with coordinates with pessimistic lock: ({}, {})", x, y);
-            List<Route> existingRoutes = em.createQuery(
-                "SELECT r FROM Route r WHERE r.coordinates.x = :x AND r.coordinates.y = :y", Route.class)
-                .setParameter("x", x.floatValue())
-                .setParameter("y", y)
+            // Блокируем ВСЕ записи в таблице Route для предотвращения race condition
+            log.info("COORDINATES VALIDATION: Applying table-level pessimistic lock for coordinates uniqueness check");
+            List<Route> allRoutes = em.createQuery("SELECT r FROM Route r", Route.class)
                 .setLockMode(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)
-                .setMaxResults(1)
                 .getResultList();
             
-            if (!existingRoutes.isEmpty()) {
-                Route existingRoute = existingRoutes.get(0);
-                log.error("COORDINATES VALIDATION: Route with coordinates ({}, {}) already exists with ID: {}",
-                        x, y, existingRoute.getId());
-                RouteCoordinatesAlreadyExistException exception = new RouteCoordinatesAlreadyExistException(x.floatValue(), y, existingRoute.getId());
-                log.error("COORDINATES VALIDATION: Throwing exception: {}", exception.getMessage());
-                throw exception;
+            // Проверяем все маршруты на совпадение координат
+            for (Route route : allRoutes) {
+                if (route.getCoordinates() != null &&
+                    route.getCoordinates().getY() != null) {
+                    
+                    float routeX = route.getCoordinates().getX(); // float не может быть null
+                    Double routeY = route.getCoordinates().getY();
+                    
+                    if (Math.abs(routeX - x.floatValue()) < 0.0001 && Math.abs(routeY - y) < 0.0001) {
+                        log.error("COORDINATES VALIDATION: Route with coordinates ({}, {}) already exists with ID: {}",
+                                x, y, route.getId());
+                        RouteCoordinatesAlreadyExistException exception = new RouteCoordinatesAlreadyExistException(x.floatValue(), y, route.getId());
+                        log.error("COORDINATES VALIDATION: Throwing exception: {}", exception.getMessage());
+                        throw exception;
+                    }
+                }
             }
             log.info("COORDINATES VALIDATION: Coordinates ({}, {}) are unique in transaction", x, y);
         } catch (RouteCoordinatesAlreadyExistException e) {
@@ -131,6 +186,7 @@ public class RouteServiceMB {
     
     /**
      * Проверяет уникальность координат маршрута при обновлении
+     * Применяет полную блокировку таблицы для предотвращения race conditions
      */
     private void validateRouteCoordinatesUniquenessForUpdate(Double x, Double y, Integer excludeRouteId) {
         log.info("UPDATE COORDINATES VALIDATION: Checking coordinates uniqueness for update: ({}, {}), excluding route ID: {}",
@@ -141,16 +197,29 @@ public class RouteServiceMB {
         }
         
         try {
-            log.info("UPDATE COORDINATES VALIDATION: Searching for existing route with coordinates: ({}, {}) excluding route: {}",
-                    x, y, excludeRouteId);
-            Route existingRoute = routeRepository.findByCoordinatesExcluding(x, y, excludeRouteId);
+            // Блокируем ВСЕ записи в таблице Route для предотвращения race condition
+            log.info("UPDATE COORDINATES VALIDATION: Applying table-level pessimistic lock for coordinates uniqueness check");
+            List<Route> allRoutes = em.createQuery("SELECT r FROM Route r", Route.class)
+                .setLockMode(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)
+                .getResultList();
             
-            if (existingRoute != null) {
-                log.error("UPDATE COORDINATES VALIDATION: Route with coordinates ({}, {}) already exists with ID: {} (excluding: {})",
-                        x, y, existingRoute.getId(), excludeRouteId);
-                RouteCoordinatesAlreadyExistException exception = new RouteCoordinatesAlreadyExistException(x.floatValue(), y, existingRoute.getId());
-                log.error("UPDATE COORDINATES VALIDATION: Throwing exception: {}", exception.getMessage());
-                throw exception;
+            // Проверяем все маршруты на совпадение координат, исключая текущий
+            for (Route route : allRoutes) {
+                if (route.getCoordinates() != null &&
+                    !route.getId().equals(excludeRouteId) &&
+                    route.getCoordinates().getY() != null) {
+                    
+                    float routeX = route.getCoordinates().getX(); // float не может быть null
+                    Double routeY = route.getCoordinates().getY();
+                    
+                    if (Math.abs(routeX - x.floatValue()) < 0.0001 && Math.abs(routeY - y) < 0.0001) {
+                        log.error("UPDATE COORDINATES VALIDATION: Route with coordinates ({}, {}) already exists with ID: {} (excluding: {})",
+                                x, y, route.getId(), excludeRouteId);
+                        RouteCoordinatesAlreadyExistException exception = new RouteCoordinatesAlreadyExistException(x.floatValue(), y, route.getId());
+                        log.error("UPDATE COORDINATES VALIDATION: Throwing exception: {}", exception.getMessage());
+                        throw exception;
+                    }
+                }
             }
             log.info("UPDATE COORDINATES VALIDATION: Coordinates ({}, {}) are unique for update", x, y);
         } catch (RouteCoordinatesAlreadyExistException e) {
@@ -161,8 +230,27 @@ public class RouteServiceMB {
             throw new RuntimeException("Error during coordinates validation for update: " + e.getMessage(), e);
         }
     }
+    
+    /**
+     * Проверяет, что маршрут не является "нулевым" (начальная и конечная точки не совпадают)
+     */
+    private void validateZeroDistanceRoute(Double fromX, Double fromY, Double toX, Double toY) {
+        log.info("ZERO_DISTANCE VALIDATION: Checking that route is not zero distance: from=({}, {}) to=({}, {})", fromX, fromY, toX, toY);
+        if (fromX == null || fromY == null || toX == null || toY == null) {
+            log.info("ZERO_DISTANCE VALIDATION: Some coordinates are null, skipping zero distance check");
+            return; // некорректные координаты не проверяем
+        }
+        
+        // Проверяем, что начальная и конечная точки не совпадают
+        if (fromX.equals(toX) && fromY.equals(toY)) {
+            log.error("ZERO_DISTANCE VALIDATION: Route has identical start and end points: ({}, {})", fromX, fromY);
+            throw new RouteZeroDistanceException(fromX, fromY, toX, toY);
+        }
+        log.info("ZERO_DISTANCE VALIDATION: Route has different start and end points - validation passed");
+    }
 
-    @Transactional
+    @Lock(LockType.WRITE)
+    @AccessTimeout(value = 60, unit = TimeUnit.SECONDS)
     public RouteDto createRoute(RouteCreateDto dto) {
         log.info("SERVICE: Starting route creation: {}", dto);
         
@@ -177,6 +265,14 @@ public class RouteServiceMB {
                 log.info("SERVICE: Validating route coordinates uniqueness in transaction: ({}, {})", dto.coordinates().x(), dto.coordinates().y());
                 validateRouteCoordinatesUniquenessInTransaction((double)dto.coordinates().x(), dto.coordinates().y());
                 log.info("SERVICE: Coordinates validation passed");
+            }
+            
+            // Проверяем, что маршрут не является "нулевым"
+            if (dto.from() != null && dto.to() != null) {
+                log.info("SERVICE: Validating that route is not zero distance: from=({}, {}) to=({}, {})",
+                        dto.from().x(), dto.from().y(), dto.to().x(), dto.to().y());
+                validateZeroDistanceRoute(dto.from().x(), dto.from().y(), dto.to().x(), dto.to().y());
+                log.info("SERVICE: Zero distance validation passed");
             }
             
             log.info("SERVICE: All validation passed, proceeding with route creation");
@@ -248,17 +344,31 @@ public class RouteServiceMB {
             log.info("SERVICE: Route successfully created with id: {}", result.id());
             return result;
             
-        } catch (RouteNameAlreadyExistsException | RouteCoordinatesAlreadyExistException e) {
-            log.error("SERVICE: Validation error during route creation: {}", e.getMessage());
+        } catch (RouteNameAlreadyExistsException e) {
+            log.error("SERVICE: Name validation error during route creation: {}", e.getMessage());
+            throw e; // Перебрасываем валидационные исключения как есть
+        } catch (RouteCoordinatesAlreadyExistException e) {
+            log.error("SERVICE: Coordinates validation error during route creation: {}", e.getMessage());
+            throw e; // Перебрасываем валидационные исключения как есть
+        } catch (RouteZeroDistanceException e) {
+            log.error("SERVICE: Zero distance validation error during route creation: {}", e.getMessage());
             throw e; // Перебрасываем валидационные исключения как есть
         } catch (Exception e) {
             log.error("SERVICE: Unexpected error during route creation - Type: {}, Message: {}",
                      e.getClass().getName(), e.getMessage(), e);
+            
+            // Перехватываем constraint violations и конвертируем в 409 Conflict
+            if (isConstraintViolation(e)) {
+                log.error("SERVICE: Constraint violation detected, converting to 409 Conflict");
+                throw convertConstraintViolationToConflict(e, dto);
+            }
+            
             // Оборачиваем в RuntimeException с подробной информацией
             throw new RuntimeException("Failed to create route: " + e.getMessage(), e);
         }
     }
 
+    @Lock(LockType.READ)
     public RouteDto findById(Integer id) {
         Route route = routeRepository.findById(id);
         if (route == null) {
@@ -270,6 +380,7 @@ public class RouteServiceMB {
     /**
      * Простой метод findAll без пагинации
      */
+    @Lock(LockType.READ)
     public List<RouteDto> findAll() {
         log.info("Finding all routes");
         List<Route> routes = routeRepository.findAll();
@@ -281,6 +392,7 @@ public class RouteServiceMB {
     /**
      * Простая offset/limit пагинация (заменяет cursor пагинацию)
      */
+    @Lock(LockType.READ)
     public List<RouteDto> findPaginated(int page, int size, String nameFilter, String sortBy, String sortDirection) {
         log.info("Finding paginated routes: page={}, size={}, filter='{}', sortBy={}, direction={}",
                 page, size, nameFilter, sortBy, sortDirection);
@@ -291,10 +403,12 @@ public class RouteServiceMB {
                 .collect(Collectors.toList());
     }
 
+    @Lock(LockType.READ)
     public long countAll() {
         return routeRepository.countAll();
     }
 
+    @Lock(LockType.READ)
     public long countWithFilter(String nameFilter) {
         return routeRepository.countWithFilter(nameFilter);
     }
@@ -419,6 +533,8 @@ public class RouteServiceMB {
     }
     
 
+    @Lock(LockType.WRITE)
+    @AccessTimeout(value = 60, unit = TimeUnit.SECONDS)
     public RouteDto updateRoute(RouteUpdateDto dto) {
         log.info("Updating route {}", dto);
         try {
@@ -438,6 +554,14 @@ public class RouteServiceMB {
                 );
             }
             
+            // Проверяем, что обновляемый маршрут не станет "нулевым"
+            if (dto.from() != null && dto.to() != null) {
+                log.info("UPDATE: Validating that updated route is not zero distance: from=({}, {}) to=({}, {})",
+                        dto.from().x(), dto.from().y(), dto.to().x(), dto.to().y());
+                validateZeroDistanceRoute(dto.from().x(), dto.from().y(), dto.to().x(), dto.to().y());
+                log.info("UPDATE: Zero distance validation passed");
+            }
+            
             Route updated = routeRepository.updateFromDto(dto);
             return RouteMapper.toDto(updated);
         } catch (IllegalArgumentException e) {
@@ -446,6 +570,7 @@ public class RouteServiceMB {
         }
     }
 
+    @Lock(LockType.READ)
     public Map<String, Object> checkDependencies(Integer id) {
         log.info("Checking dependencies for route with id {}", id);
         
@@ -524,7 +649,8 @@ public class RouteServiceMB {
         return result;
     }
 
-    @Transactional
+    @Lock(LockType.WRITE)
+    @AccessTimeout(value = 60, unit = TimeUnit.SECONDS)
     public void delete(Integer id) {
         log.info("Deleting route with id {}", id);
         
@@ -563,7 +689,8 @@ public class RouteServiceMB {
         }
     }
 
-    @Transactional
+    @Lock(LockType.WRITE)
+    @AccessTimeout(value = 60, unit = TimeUnit.SECONDS)
     public void deleteWithRebinding(Integer id, Integer coordinatesTargetRouteId,
                                    Integer fromLocationTargetRouteId, Integer toLocationTargetRouteId) {
         log.info("Deleting route with id {} and rebinding: coordinates -> {}, from -> {}, to -> {}",
@@ -695,6 +822,8 @@ public class RouteServiceMB {
                 .collect(Collectors.toList());
     }
 
+    @Lock(LockType.WRITE)
+    @AccessTimeout(value = 60, unit = TimeUnit.SECONDS)
     public RouteDto addRouteBetweenLocations(String routeName, Double coordX, Double coordY,
                                            Double fromX, double fromY, String fromName,
                                            Double toX, double toY, String toName,
@@ -706,6 +835,12 @@ public class RouteServiceMB {
         
         // Проверяем уникальность координат маршрута в транзакции
         validateRouteCoordinatesUniquenessInTransaction(coordX, coordY);
+        
+        // Проверяем, что маршрут не является "нулевым"
+        log.info("SERVICE: Validating that new route between locations is not zero distance: from=({}, {}) to=({}, {})",
+                fromX, fromY, toX, toY);
+        validateZeroDistanceRoute(fromX, fromY, toX, toY);
+        log.info("SERVICE: Zero distance validation passed for route between locations");
         
         // Используем существующий метод createRoute с правильной структурой
         CoordinatesDto coordinatesDto = new CoordinatesDto(null, coordX.floatValue(), coordY, null, null);
@@ -759,7 +894,6 @@ public class RouteServiceMB {
         return locationService.findOrCreateWithOwner(locationDto, ownerRoute);
     }
     
-    @Transactional
     private void deleteWithOwnershipTransfer(Integer id, Integer coordinatesTargetId,
                                            Integer fromLocationTargetId, Integer toLocationTargetId) {
         log.info("Deleting route {} with ownership transfer: coords->{}, from->{}, to->{}",
@@ -825,7 +959,6 @@ public class RouteServiceMB {
         log.info("Route {} deleted with ownership transfer completed", id);
     }
     
-    @Transactional
     private void deleteWithoutOwnershipTransfer(Integer id) {
         log.info("Deleting route {} without ownership transfer", id);
         
@@ -884,5 +1017,110 @@ public class RouteServiceMB {
         }
 
         log.info("Route {} deleted without ownership transfer", id);
+    }
+    
+    // Методы для обработки constraint violations
+    
+    /**
+     * Проверяет, является ли исключение constraint violation
+     */
+    private boolean isConstraintViolation(Exception e) {
+        if (e == null) return false;
+        
+        log.info("CONSTRAINT CHECK: Examining exception - Type: {}, Message: {}",
+                e.getClass().getSimpleName(), e.getMessage());
+        
+        String message = e.getMessage();
+        Throwable rootCause = e;
+        
+        // Проверяем всю цепочку причин
+        while (rootCause != null) {
+            String causeMessage = rootCause.getMessage();
+            log.info("CONSTRAINT CHECK: Root cause - Type: {}, Message: {}",
+                    rootCause.getClass().getSimpleName(), causeMessage);
+            
+            if (causeMessage != null) {
+                // Проверяем на признаки constraint violations
+                if (causeMessage.toLowerCase().contains("duplicate key") ||
+                    causeMessage.toLowerCase().contains("unique constraint") ||
+                    causeMessage.toLowerCase().contains("violates unique constraint") ||
+                    causeMessage.toLowerCase().contains("duplicate entry") ||
+                    causeMessage.toLowerCase().contains("constraint violation") ||
+                    causeMessage.toLowerCase().contains("duplicate value") ||
+                    causeMessage.contains("23505") || // PostgreSQL unique violation
+                    causeMessage.contains("23000") || // MySQL integrity constraint violation
+                    rootCause.getClass().getSimpleName().contains("ConstraintViolation") ||
+                    rootCause.getClass().getSimpleName().contains("IntegrityConstraint")) {
+                    
+                    log.info("CONSTRAINT CHECK: Detected constraint violation in cause: {}", causeMessage);
+                    return true;
+                }
+            }
+            
+            rootCause = rootCause.getCause();
+        }
+        
+        // Дополнительная проверка по сообщению исключения
+        if (message != null) {
+            if (message.toLowerCase().contains("duplicate key") ||
+                message.toLowerCase().contains("unique constraint") ||
+                message.toLowerCase().contains("constraint violation") ||
+                message.toLowerCase().contains("status_marked_rollback") ||
+                message.toLowerCase().contains("duplicate entry")) {
+                
+                log.info("CONSTRAINT CHECK: Detected constraint violation in main message: {}", message);
+                return true;
+            }
+        }
+        
+        // Проверяем тип исключения
+        if (e.getClass().getSimpleName().contains("ConstraintViolation") ||
+            e.getClass().getSimpleName().contains("IntegrityConstraint") ||
+            e.getClass().getSimpleName().contains("SQLException")) {
+            
+            log.info("CONSTRAINT CHECK: Detected constraint violation by exception type: {}", e.getClass().getSimpleName());
+            return true;
+        }
+        
+        log.info("CONSTRAINT CHECK: No constraint violation detected");
+        return false;
+    }
+    
+    /**
+     * Конвертирует constraint violation в RouteConflictException для HTTP 409
+     */
+    private RouteConflictException convertConstraintViolationToConflict(Exception e, RouteCreateDto dto) {
+        String message = e.getMessage();
+        if (message == null && e.getCause() != null) {
+            message = e.getCause().getMessage();
+        }
+        
+        if (message == null) {
+            return RouteConflictException.constraintViolation("Неизвестный конфликт данных маршрута");
+        }
+        
+        // Определяем тип constraint violation для МАРШРУТОВ
+        if (message.contains("routes_name") || message.contains("route") && message.contains("name")) {
+            // Дублирующееся название маршрута
+            if (dto.name() != null) {
+                return RouteConflictException.duplicateRouteName(dto.name().trim());
+            }
+        } else if (message.contains("coordinates") && message.contains("unique") ||
+                   message.contains("routes_coordinates_id")) {
+            // Дублирующиеся координаты маршрута
+            if (dto.coordinates() != null) {
+                return RouteConflictException.duplicateRouteCoordinates(dto.coordinates().x(), dto.coordinates().y());
+            }
+        } else if (message.contains("zero") || message.contains("distance")) {
+            // Маршрут с нулевым расстоянием
+            if (dto.from() != null && dto.to() != null) {
+                return RouteConflictException.zeroDistanceRoute(
+                    dto.from().x(), dto.from().y(),
+                    dto.to().x(), dto.to().y());
+            }
+        }
+        
+        // Общий constraint violation для маршрутов
+        return RouteConflictException.constraintViolation("Конфликт данных маршрута: " + message);
     }
 }

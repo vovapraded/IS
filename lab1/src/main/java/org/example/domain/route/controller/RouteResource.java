@@ -24,6 +24,8 @@ import org.example.domain.import_history.dto.ImportResultDto;
 import org.example.exception.ValidationException;
 import org.example.exception.RouteNameAlreadyExistsException;
 import org.example.exception.RouteCoordinatesAlreadyExistException;
+import org.example.exception.RouteZeroDistanceException;
+import org.example.exception.RouteConflictException;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.HashMap;
@@ -123,6 +125,11 @@ public class RouteResource {
             RouteDto created = routeService.createRoute(dto);
             log.info("CONTROLLER: Route created successfully: {}", created.id());
             return Response.status(Response.Status.CREATED).entity(created).build();
+        } catch (RouteConflictException e) {
+            log.warn("CONTROLLER: Route conflict detected: {}", e.getMessage());
+            return Response.status(Response.Status.CONFLICT)
+                    .entity(Map.of("error", e.getMessage(), "type", "ROUTE_CONFLICT"))
+                    .build();
         } catch (RouteNameAlreadyExistsException e) {
             log.warn("CONTROLLER: Route name already exists: {}", e.getMessage());
             return Response.status(Response.Status.CONFLICT)
@@ -132,6 +139,11 @@ public class RouteResource {
             log.warn("CONTROLLER: Route coordinates already exist: {}", e.getMessage());
             return Response.status(Response.Status.CONFLICT)
                     .entity(Map.of("error", e.getMessage(), "type", "DUPLICATE_COORDINATES"))
+                    .build();
+        } catch (RouteZeroDistanceException e) {
+            log.warn("CONTROLLER: Zero distance route validation failed: {}", e.getMessage());
+            return Response.status(Response.Status.CONFLICT)
+                    .entity(Map.of("error", e.getMessage(), "type", "ZERO_DISTANCE_ROUTE"))
                     .build();
         } catch (ValidationException e) {
             log.warn("CONTROLLER: Validation error during route creation: {}", e.getMessage());
@@ -153,12 +165,16 @@ public class RouteResource {
             
             // Проверяем, является ли причина исключения нашим кастомным исключением
             Throwable rootCause = e;
-            while (rootCause.getCause() != null) {
-                rootCause = rootCause.getCause();
+            while (rootCause != null) {
                 log.error("CONTROLLER: Root cause - Type: {}, Message: {}", rootCause.getClass().getName(), rootCause.getMessage());
                 
                 // Проверяем конкретные типы исключений в цепочке причин
-                if (rootCause instanceof RouteNameAlreadyExistsException) {
+                if (rootCause instanceof RouteConflictException) {
+                    log.warn("CONTROLLER: Found RouteConflictException in cause chain: {}", rootCause.getMessage());
+                    return Response.status(Response.Status.CONFLICT)
+                            .entity(Map.of("error", rootCause.getMessage(), "type", "ROUTE_CONFLICT"))
+                            .build();
+                } else if (rootCause instanceof RouteNameAlreadyExistsException) {
                     log.warn("CONTROLLER: Found RouteNameAlreadyExistsException in cause chain: {}", rootCause.getMessage());
                     return Response.status(Response.Status.CONFLICT)
                             .entity(Map.of("error", rootCause.getMessage(), "type", "DUPLICATE_NAME"))
@@ -168,7 +184,14 @@ public class RouteResource {
                     return Response.status(Response.Status.CONFLICT)
                             .entity(Map.of("error", rootCause.getMessage(), "type", "DUPLICATE_COORDINATES"))
                             .build();
+                } else if (rootCause instanceof RouteZeroDistanceException) {
+                    log.warn("CONTROLLER: Found RouteZeroDistanceException in cause chain: {}", rootCause.getMessage());
+                    return Response.status(Response.Status.CONFLICT)
+                            .entity(Map.of("error", rootCause.getMessage(), "type", "ZERO_DISTANCE_ROUTE"))
+                            .build();
                 }
+                
+                rootCause = rootCause.getCause();
             }
             
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
@@ -240,6 +263,50 @@ public class RouteResource {
             )).build();
         }
     }
+    
+    @POST
+    @Path("/test-zero-distance")
+    public Response testZeroDistanceRoute(@QueryParam("x") Double x, @QueryParam("y") Double y) {
+        log.info("TEST ZERO DISTANCE: Testing route with same start and end points ({}, {})", x, y);
+        
+        try {
+            RouteCreateDto testDto = new RouteCreateDto(
+                "TEST_ZERO_DISTANCE_" + System.currentTimeMillis(), // уникальное имя
+                new org.example.domain.coordinates.dto.CoordinatesDto(null, x.floatValue(), y, null, null),
+                new org.example.domain.location.dto.LocationDto(null, x, y, "Same Location", null, null), // ОДИНАКОВЫЕ ТОЧКИ
+                new org.example.domain.location.dto.LocationDto(null, x, y, "Same Location", null, null), // ОДИНАКОВЫЕ ТОЧКИ
+                100L,
+                5L
+            );
+            
+            RouteDto created = routeService.createRoute(testDto);
+            log.error("TEST: UNEXPECTED - Zero distance route was created! Route ID: {}", created.id());
+            
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity(Map.of(
+                "result", "ERROR",
+                "message", "ОШИБКА: Маршрут с нулевым расстоянием был создан! Валидация не работает",
+                "routeId", created.id(),
+                "coordinates", "(" + x + ", " + y + ")"
+            )).build();
+            
+        } catch (RouteZeroDistanceException e) {
+            log.info("TEST: Zero distance validation works correctly: {}", e.getMessage());
+            return Response.status(Response.Status.CONFLICT).entity(Map.of(
+                "result", "ZERO_DISTANCE_BLOCKED",
+                "message", e.getMessage(),
+                "coordinates", "(" + x + ", " + y + ")"
+            )).build();
+            
+        } catch (Exception e) {
+            log.error("TEST: Unexpected error during zero distance test: {}", e.getMessage(), e);
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity(Map.of(
+                "result", "ERROR",
+                "message", "Ошибка при тестировании zero distance: " + e.getMessage(),
+                "error_type", e.getClass().getSimpleName(),
+                "coordinates", "(" + x + ", " + y + ")"
+            )).build();
+        }
+    }
 
     @PUT
     @Path("/{id}")
@@ -255,6 +322,11 @@ public class RouteResource {
             RouteDto updated = routeService.updateRoute(dto);
             log.info("Route updated successfully: {}", updated.id());
             return Response.ok(updated).build();
+        } catch (RouteConflictException e) {
+            log.warn("Route conflict detected on update: {}", e.getMessage());
+            return Response.status(Response.Status.CONFLICT)
+                    .entity(Map.of("error", e.getMessage(), "type", "ROUTE_CONFLICT"))
+                    .build();
         } catch (RouteNameAlreadyExistsException e) {
             log.warn("Route name already exists on update: {}", e.getMessage());
             return Response.status(Response.Status.CONFLICT)
@@ -264,6 +336,11 @@ public class RouteResource {
             log.warn("Route coordinates already exist on update: {}", e.getMessage());
             return Response.status(Response.Status.CONFLICT)
                     .entity(Map.of("error", e.getMessage(), "type", "DUPLICATE_COORDINATES"))
+                    .build();
+        } catch (RouteZeroDistanceException e) {
+            log.warn("Zero distance route validation failed on update: {}", e.getMessage());
+            return Response.status(Response.Status.CONFLICT)
+                    .entity(Map.of("error", e.getMessage(), "type", "ZERO_DISTANCE_ROUTE"))
                     .build();
         } catch (ValidationException e) {
             log.warn("Validation error during route update: {}", e.getMessage());
