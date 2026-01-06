@@ -24,7 +24,6 @@ import org.example.domain.import_history.dto.ImportResultDto;
 import org.example.exception.ValidationException;
 import org.example.exception.RouteNameAlreadyExistsException;
 import org.example.exception.RouteZeroDistanceException;
-import org.example.exception.RouteConflictException;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.HashMap;
@@ -92,43 +91,10 @@ public class RouteResource {
     public Response create(RouteCreateDto dto) {
         log.info("CONTROLLER: Received request to create route: {}", dto);
         
-        // ПРОВЕРКА ПРЯМО В КОНТРОЛЛЕРЕ - до EJB
-        if (dto.coordinates() != null) {
-            log.info("CONTROLLER: Pre-checking coordinates uniqueness: ({}, {})",
-                    dto.coordinates().x(), dto.coordinates().y());
-            try {
-                // Прямая проверка через сервис без создания маршрута
-                List<RouteDto> allRoutes = routeService.findAll();
-                for (RouteDto existingRoute : allRoutes) {
-                    if (existingRoute.coordinates() != null &&
-                        Float.compare(existingRoute.coordinates().x(), dto.coordinates().x()) == 0 &&
-                        Double.compare(existingRoute.coordinates().y(), dto.coordinates().y()) == 0) {
-                        
-                        log.error("CONTROLLER: Found duplicate coordinates in route ID: {}", existingRoute.id());
-                        return Response.status(Response.Status.CONFLICT)
-                                .entity(Map.of(
-                                    "error", "Маршрут с координатами (" + dto.coordinates().x() + ", " + dto.coordinates().y() + ") уже существует",
-                                    "type", "DUPLICATE_COORDINATES",
-                                    "existingRouteId", existingRoute.id()
-                                ))
-                                .build();
-                    }
-                }
-                log.info("CONTROLLER: Pre-check passed - coordinates are unique");
-            } catch (Exception e) {
-                log.warn("CONTROLLER: Error during pre-check, continuing with service call: {}", e.getMessage());
-            }
-        }
-        
         try {
             RouteDto created = routeService.createRoute(dto);
             log.info("CONTROLLER: Route created successfully: {}", created.id());
             return Response.status(Response.Status.CREATED).entity(created).build();
-        } catch (RouteConflictException e) {
-            log.warn("CONTROLLER: Route conflict detected: {}", e.getMessage());
-            return Response.status(Response.Status.CONFLICT)
-                    .entity(Map.of("error", e.getMessage(), "type", "ROUTE_CONFLICT"))
-                    .build();
         } catch (RouteNameAlreadyExistsException e) {
             log.warn("CONTROLLER: Route name already exists: {}", e.getMessage());
             return Response.status(Response.Status.CONFLICT)
@@ -163,12 +129,7 @@ public class RouteResource {
                 log.error("CONTROLLER: Root cause - Type: {}, Message: {}", rootCause.getClass().getName(), rootCause.getMessage());
                 
                 // Проверяем конкретные типы исключений в цепочке причин
-                if (rootCause instanceof RouteConflictException) {
-                    log.warn("CONTROLLER: Found RouteConflictException in cause chain: {}", rootCause.getMessage());
-                    return Response.status(Response.Status.CONFLICT)
-                            .entity(Map.of("error", rootCause.getMessage(), "type", "ROUTE_CONFLICT"))
-                            .build();
-                } else if (rootCause instanceof RouteNameAlreadyExistsException) {
+                if (rootCause instanceof RouteNameAlreadyExistsException) {
                     log.warn("CONTROLLER: Found RouteNameAlreadyExistsException in cause chain: {}", rootCause.getMessage());
                     return Response.status(Response.Status.CONFLICT)
                             .entity(Map.of("error", rootCause.getMessage(), "type", "DUPLICATE_NAME"))
@@ -303,11 +264,6 @@ public class RouteResource {
             RouteDto updated = routeService.updateRoute(dto);
             log.info("Route updated successfully: {}", updated.id());
             return Response.ok(updated).build();
-        } catch (RouteConflictException e) {
-            log.warn("Route conflict detected on update: {}", e.getMessage());
-            return Response.status(Response.Status.CONFLICT)
-                    .entity(Map.of("error", e.getMessage(), "type", "ROUTE_CONFLICT"))
-                    .build();
         } catch (RouteNameAlreadyExistsException e) {
             log.warn("Route name already exists on update: {}", e.getMessage());
             return Response.status(Response.Status.CONFLICT)

@@ -25,7 +25,6 @@ import org.example.domain.location.repository.LocationRepositoryMB;
 import org.example.domain.route.dto.RouteCursorPageDto;
 import org.example.exception.RouteNameAlreadyExistsException;
 import org.example.exception.RouteZeroDistanceException;
-import org.example.exception.RouteConflictException;
 
 import java.util.HashMap;
 import java.util.List;
@@ -974,40 +973,34 @@ public class RouteServiceMB {
     }
     
     /**
-     * Конвертирует constraint violation в RouteConflictException для HTTP 409
+     * Конвертирует constraint violation в специфичные исключения для HTTP 409
      */
-    private RouteConflictException convertConstraintViolationToConflict(Exception e, RouteCreateDto dto) {
+    private RuntimeException convertConstraintViolationToConflict(Exception e, RouteCreateDto dto) {
         String message = e.getMessage();
         if (message == null && e.getCause() != null) {
             message = e.getCause().getMessage();
         }
         
         if (message == null) {
-            return RouteConflictException.constraintViolation("Неизвестный конфликт данных маршрута");
+            return new RuntimeException("Неизвестный конфликт данных маршрута");
         }
         
         // Определяем тип constraint violation для МАРШРУТОВ
         if (message.contains("routes_name") || message.contains("route") && message.contains("name")) {
             // Дублирующееся название маршрута
             if (dto.name() != null) {
-                return RouteConflictException.duplicateRouteName(dto.name().trim());
-            }
-        } else if (message.contains("coordinates") && message.contains("unique") ||
-                   message.contains("routes_coordinates_id")) {
-            // Дублирующиеся координаты маршрута
-            if (dto.coordinates() != null) {
-                return RouteConflictException.duplicateRouteCoordinates(dto.coordinates().x(), dto.coordinates().y());
+                return new RouteNameAlreadyExistsException(dto.name().trim());
             }
         } else if (message.contains("zero") || message.contains("distance")) {
             // Маршрут с нулевым расстоянием
             if (dto.from() != null && dto.to() != null) {
-                return RouteConflictException.zeroDistanceRoute(
+                return new RouteZeroDistanceException(
                     dto.from().x(), dto.from().y(),
                     dto.to().x(), dto.to().y());
             }
         }
         
         // Общий constraint violation для маршрутов
-        return RouteConflictException.constraintViolation("Конфликт данных маршрута: " + message);
+        return new RuntimeException("Конфликт данных маршрута: " + message);
     }
 }
