@@ -23,7 +23,6 @@ import org.example.domain.import_history.dto.ImportRequestDto;
 import org.example.domain.import_history.dto.ImportResultDto;
 import org.example.exception.ValidationException;
 import org.example.exception.RouteNameAlreadyExistsException;
-import org.example.exception.RouteCoordinatesAlreadyExistException;
 import org.example.exception.RouteZeroDistanceException;
 import org.example.exception.RouteConflictException;
 import lombok.extern.slf4j.Slf4j;
@@ -135,11 +134,6 @@ public class RouteResource {
             return Response.status(Response.Status.CONFLICT)
                     .entity(Map.of("error", e.getMessage(), "type", "DUPLICATE_NAME"))
                     .build();
-        } catch (RouteCoordinatesAlreadyExistException e) {
-            log.warn("CONTROLLER: Route coordinates already exist: {}", e.getMessage());
-            return Response.status(Response.Status.CONFLICT)
-                    .entity(Map.of("error", e.getMessage(), "type", "DUPLICATE_COORDINATES"))
-                    .build();
         } catch (RouteZeroDistanceException e) {
             log.warn("CONTROLLER: Zero distance route validation failed: {}", e.getMessage());
             return Response.status(Response.Status.CONFLICT)
@@ -178,11 +172,6 @@ public class RouteResource {
                     log.warn("CONTROLLER: Found RouteNameAlreadyExistsException in cause chain: {}", rootCause.getMessage());
                     return Response.status(Response.Status.CONFLICT)
                             .entity(Map.of("error", rootCause.getMessage(), "type", "DUPLICATE_NAME"))
-                            .build();
-                } else if (rootCause instanceof RouteCoordinatesAlreadyExistException) {
-                    log.warn("CONTROLLER: Found RouteCoordinatesAlreadyExistException in cause chain: {}", rootCause.getMessage());
-                    return Response.status(Response.Status.CONFLICT)
-                            .entity(Map.of("error", rootCause.getMessage(), "type", "DUPLICATE_COORDINATES"))
                             .build();
                 } else if (rootCause instanceof RouteZeroDistanceException) {
                     log.warn("CONTROLLER: Found RouteZeroDistanceException in cause chain: {}", rootCause.getMessage());
@@ -242,14 +231,6 @@ public class RouteResource {
                 "result", "SUCCESS",
                 "message", "Координаты (" + x + ", " + y + ") уникальны - маршрут создан",
                 "routeId", created.id(),
-                "coordinates", "(" + x + ", " + y + ")"
-            )).build();
-            
-        } catch (RouteCoordinatesAlreadyExistException e) {
-            log.warn("TEST: Coordinates validation failed: {}", e.getMessage());
-            return Response.status(Response.Status.CONFLICT).entity(Map.of(
-                "result", "DUPLICATE_COORDINATES",
-                "message", e.getMessage(),
                 "coordinates", "(" + x + ", " + y + ")"
             )).build();
             
@@ -331,11 +312,6 @@ public class RouteResource {
             log.warn("Route name already exists on update: {}", e.getMessage());
             return Response.status(Response.Status.CONFLICT)
                     .entity(Map.of("error", e.getMessage(), "type", "DUPLICATE_NAME"))
-                    .build();
-        } catch (RouteCoordinatesAlreadyExistException e) {
-            log.warn("Route coordinates already exist on update: {}", e.getMessage());
-            return Response.status(Response.Status.CONFLICT)
-                    .entity(Map.of("error", e.getMessage(), "type", "DUPLICATE_COORDINATES"))
                     .build();
         } catch (RouteZeroDistanceException e) {
             log.warn("Zero distance route validation failed on update: {}", e.getMessage());

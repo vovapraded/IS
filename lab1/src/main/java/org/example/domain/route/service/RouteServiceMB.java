@@ -24,7 +24,6 @@ import org.example.domain.coordinates.repository.CoordinatesRepositoryMB;
 import org.example.domain.location.repository.LocationRepositoryMB;
 import org.example.domain.route.dto.RouteCursorPageDto;
 import org.example.exception.RouteNameAlreadyExistsException;
-import org.example.exception.RouteCoordinatesAlreadyExistException;
 import org.example.exception.RouteZeroDistanceException;
 import org.example.exception.RouteConflictException;
 
@@ -139,97 +138,6 @@ public class RouteServiceMB {
         log.info("UPDATE VALIDATION: Normalized route name '{}' is unique for update", normalizedName);
     }
     
-    /**
-     * Проверяет уникальность координат маршрута при создании (в рамках транзакции)
-     * Применяет полную блокировку таблицы для предотвращения race conditions
-     */
-    private void validateRouteCoordinatesUniquenessInTransaction(Double x, Double y) {
-        log.info("COORDINATES VALIDATION: Checking coordinates uniqueness in transaction for: ({}, {})", x, y);
-        if (x == null || y == null) {
-            log.info("COORDINATES VALIDATION: X or Y coordinate is null, skipping uniqueness check");
-            return; // некорректные координаты не проверяем
-        }
-        
-        try {
-            // Блокируем ВСЕ записи в таблице Route для предотвращения race condition
-            log.info("COORDINATES VALIDATION: Applying table-level pessimistic lock for coordinates uniqueness check");
-            List<Route> allRoutes = em.createQuery("SELECT r FROM Route r", Route.class)
-                .setLockMode(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)
-                .getResultList();
-            
-            // Проверяем все маршруты на совпадение координат
-            for (Route route : allRoutes) {
-                if (route.getCoordinates() != null &&
-                    route.getCoordinates().getY() != null) {
-                    
-                    float routeX = route.getCoordinates().getX(); // float не может быть null
-                    Double routeY = route.getCoordinates().getY();
-                    
-                    if (Math.abs(routeX - x.floatValue()) < 0.0001 && Math.abs(routeY - y) < 0.0001) {
-                        log.error("COORDINATES VALIDATION: Route with coordinates ({}, {}) already exists with ID: {}",
-                                x, y, route.getId());
-                        RouteCoordinatesAlreadyExistException exception = new RouteCoordinatesAlreadyExistException(x.floatValue(), y, route.getId());
-                        log.error("COORDINATES VALIDATION: Throwing exception: {}", exception.getMessage());
-                        throw exception;
-                    }
-                }
-            }
-            log.info("COORDINATES VALIDATION: Coordinates ({}, {}) are unique in transaction", x, y);
-        } catch (RouteCoordinatesAlreadyExistException e) {
-            log.error("COORDINATES VALIDATION: Re-throwing coordinates exception: {}", e.getMessage());
-            throw e; // Перебрасываем наше исключение
-        } catch (Exception e) {
-            log.error("COORDINATES VALIDATION: Unexpected error during coordinates validation: {}", e.getMessage(), e);
-            throw new RuntimeException("Error during coordinates validation: " + e.getMessage(), e);
-        }
-    }
-    
-    /**
-     * Проверяет уникальность координат маршрута при обновлении
-     * Применяет полную блокировку таблицы для предотвращения race conditions
-     */
-    private void validateRouteCoordinatesUniquenessForUpdate(Double x, Double y, Integer excludeRouteId) {
-        log.info("UPDATE COORDINATES VALIDATION: Checking coordinates uniqueness for update: ({}, {}), excluding route ID: {}",
-                x, y, excludeRouteId);
-        if (x == null || y == null) {
-            log.info("UPDATE COORDINATES VALIDATION: X or Y coordinate is null, skipping uniqueness check");
-            return; // некорректные координаты не проверяем
-        }
-        
-        try {
-            // Блокируем ВСЕ записи в таблице Route для предотвращения race condition
-            log.info("UPDATE COORDINATES VALIDATION: Applying table-level pessimistic lock for coordinates uniqueness check");
-            List<Route> allRoutes = em.createQuery("SELECT r FROM Route r", Route.class)
-                .setLockMode(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)
-                .getResultList();
-            
-            // Проверяем все маршруты на совпадение координат, исключая текущий
-            for (Route route : allRoutes) {
-                if (route.getCoordinates() != null &&
-                    !route.getId().equals(excludeRouteId) &&
-                    route.getCoordinates().getY() != null) {
-                    
-                    float routeX = route.getCoordinates().getX(); // float не может быть null
-                    Double routeY = route.getCoordinates().getY();
-                    
-                    if (Math.abs(routeX - x.floatValue()) < 0.0001 && Math.abs(routeY - y) < 0.0001) {
-                        log.error("UPDATE COORDINATES VALIDATION: Route with coordinates ({}, {}) already exists with ID: {} (excluding: {})",
-                                x, y, route.getId(), excludeRouteId);
-                        RouteCoordinatesAlreadyExistException exception = new RouteCoordinatesAlreadyExistException(x.floatValue(), y, route.getId());
-                        log.error("UPDATE COORDINATES VALIDATION: Throwing exception: {}", exception.getMessage());
-                        throw exception;
-                    }
-                }
-            }
-            log.info("UPDATE COORDINATES VALIDATION: Coordinates ({}, {}) are unique for update", x, y);
-        } catch (RouteCoordinatesAlreadyExistException e) {
-            log.error("UPDATE COORDINATES VALIDATION: Re-throwing coordinates exception: {}", e.getMessage());
-            throw e; // Перебрасываем наше исключение
-        } catch (Exception e) {
-            log.error("UPDATE COORDINATES VALIDATION: Unexpected error during coordinates validation: {}", e.getMessage(), e);
-            throw new RuntimeException("Error during coordinates validation for update: " + e.getMessage(), e);
-        }
-    }
     
     /**
      * Проверяет, что маршрут не является "нулевым" (начальная и конечная точки не совпадают)
@@ -260,12 +168,6 @@ public class RouteServiceMB {
             validateRouteNameUniquenessInTransaction(dto.name());
             log.info("SERVICE: Name validation passed");
             
-            // Проверяем уникальность координат маршрута в транзакции
-            if (dto.coordinates() != null) {
-                log.info("SERVICE: Validating route coordinates uniqueness in transaction: ({}, {})", dto.coordinates().x(), dto.coordinates().y());
-                validateRouteCoordinatesUniquenessInTransaction((double)dto.coordinates().x(), dto.coordinates().y());
-                log.info("SERVICE: Coordinates validation passed");
-            }
             
             // Проверяем, что маршрут не является "нулевым"
             if (dto.from() != null && dto.to() != null) {
@@ -346,9 +248,6 @@ public class RouteServiceMB {
             
         } catch (RouteNameAlreadyExistsException e) {
             log.error("SERVICE: Name validation error during route creation: {}", e.getMessage());
-            throw e; // Перебрасываем валидационные исключения как есть
-        } catch (RouteCoordinatesAlreadyExistException e) {
-            log.error("SERVICE: Coordinates validation error during route creation: {}", e.getMessage());
             throw e; // Перебрасываем валидационные исключения как есть
         } catch (RouteZeroDistanceException e) {
             log.error("SERVICE: Zero distance validation error during route creation: {}", e.getMessage());
@@ -543,16 +442,6 @@ public class RouteServiceMB {
                 validateRouteNameUniquenessForUpdate(dto.name(), dto.id());
             }
             
-            // Проверяем уникальность координат маршрута при обновлении
-            // Для этого нужно получить текущий маршрут и проверить изменения координат
-            Route currentRoute = routeRepository.findById(dto.id());
-            if (currentRoute != null && dto.coordinates() != null) {
-                validateRouteCoordinatesUniquenessForUpdate(
-                    (double)dto.coordinates().x(),
-                    dto.coordinates().y(),
-                    dto.id()
-                );
-            }
             
             // Проверяем, что обновляемый маршрут не станет "нулевым"
             if (dto.from() != null && dto.to() != null) {
@@ -833,8 +722,6 @@ public class RouteServiceMB {
         // Проверяем уникальность имени маршрута в транзакции
         validateRouteNameUniquenessInTransaction(routeName);
         
-        // Проверяем уникальность координат маршрута в транзакции
-        validateRouteCoordinatesUniquenessInTransaction(coordX, coordY);
         
         // Проверяем, что маршрут не является "нулевым"
         log.info("SERVICE: Validating that new route between locations is not zero distance: from=({}, {}) to=({}, {})",
