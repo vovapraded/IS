@@ -336,4 +336,23 @@ public class RouteResource {
                     .build();
         }
     }
+
+    @GET
+    @Path("/{id}/check-dependencies")
+    public Response checkDependencies(@PathParam("id") Integer id) {
+        try {
+            Map<String, Object> dependencies = routeService.checkDependencies(id);
+            return Response.ok(dependencies).build();
+        } catch (IllegalArgumentException e) {
+            log.warn("Route not found for dependency check: {}", e.getMessage());
+            return Response.status(Response.Status.NOT_FOUND)
+                    .entity(Map.of("error", e.getMessage()))
+                    .build();
+        } catch (Exception e) {
+            log.error("Error checking dependencies for route {}: {}", id, e.getMessage(), e);
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+                    .entity(Map.of("error", "Не удалось проверить зависимости маршрута"))
+                    .build();
+        }
+    }
 }
