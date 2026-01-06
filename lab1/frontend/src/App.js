@@ -177,14 +177,20 @@ function App() {
     };
 
     try {
-      if (values.id) {
-        // Обновление
-        await api.put(`/routes/${values.id}`, { id: values.id, ...dto });
-        setEditing(null);
-      } else {
-        // Создание
-        await api.post("/routes", dto);
-      }
+      let response;
+    if (values.id) {
+      // Обновление
+      response = await api.put(`/routes/${values.id}`, { id: values.id, ...dto });
+      setEditing(null);
+    } else {
+      // Создание
+      response = await api.post("/routes", dto);
+    }
+    
+    // Успешный ответ содержит поле route
+    if (response.data && response.data.route) {
+      console.log("Route created/updated successfully:", response.data.route);
+    }
       
       // Перезагрузка данных таблицы
       loadRoutes(currentPage, filterName, sortBy, sortDirection);
@@ -203,8 +209,28 @@ function App() {
       if (err.response && err.response.status === 409) {
         const errorData = err.response.data;
         console.log("409 Conflict error data:", errorData);
-        if (errorData.type === "DUPLICATE_NAME") {
-          setError(`${errorData.error}`);
+        
+        if (errorData.error_type === "DUPLICATE_NAME") {
+          let message = `Маршрут с именем '${values.name}' уже существует в системе`;
+          if (errorData.route) {
+            // Данные конфликтующего маршрута в поле route
+            const conflicting = errorData.route;
+            message += `. Существующий маршрут: ID ${conflicting.id}`;
+            if (conflicting.from && conflicting.to) {
+              message += `, от (${conflicting.from.x}, ${conflicting.from.y}) до (${conflicting.to.x}, ${conflicting.to.y})`;
+            }
+            if (conflicting.distance) {
+              message += `, расстояние: ${conflicting.distance}`;
+            }
+          }
+          setError(message);
+        } else if (errorData.error_type === "ZERO_DISTANCE_ROUTE") {
+          let message = "Нельзя создать маршрут с нулевым расстоянием";
+          if (errorData.fromX !== undefined && errorData.fromY !== undefined &&
+              errorData.toX !== undefined && errorData.toY !== undefined) {
+            message += `. Указанные координаты: от (${errorData.fromX}, ${errorData.fromY}) до (${errorData.toX}, ${errorData.toY})`;
+          }
+          setError(message);
         } else if (errorData.type === "DUPLICATE_COORDINATES") {
           setError(`${errorData.error}`);
         } else {

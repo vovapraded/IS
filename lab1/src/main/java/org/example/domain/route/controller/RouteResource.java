@@ -24,6 +24,7 @@ import org.example.domain.import_history.dto.ImportResultDto;
 import org.example.exception.ValidationException;
 import org.example.exception.RouteNameAlreadyExistsException;
 import org.example.exception.RouteZeroDistanceException;
+import jakarta.persistence.OptimisticLockException;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.HashMap;
@@ -94,16 +95,40 @@ public class RouteResource {
         try {
             RouteDto created = routeService.createRoute(dto);
             log.info("CONTROLLER: Route created successfully: {}", created.id());
-            return Response.status(Response.Status.CREATED).entity(created).build();
+            Map<String, Object> response = new HashMap<>();
+            response.put("route", created);
+            return Response.status(Response.Status.CREATED).entity(response).build();
         } catch (RouteNameAlreadyExistsException e) {
             log.warn("CONTROLLER: Route name already exists: {}", e.getMessage());
+            log.info("CONTROLLER: RouteNameAlreadyExistsException details - conflicting route is null: {}", (e.getConflictingRoute() == null));
+            if (e.getConflictingRoute() != null) {
+                log.info("CONTROLLER: Conflicting route details: ID={}, Name='{}'", e.getConflictingRoute().id(), e.getConflictingRoute().name());
+            } else {
+                log.error("CONTROLLER: ERROR - RouteNameAlreadyExistsException was thrown WITHOUT conflicting route data!");
+            }
+            
+            Map<String, Object> response = new HashMap<>();
+            response.put("error_type", "DUPLICATE_NAME");
+            if (e.getConflictingRoute() != null) {
+                response.put("route", e.getConflictingRoute());
+                log.info("CONTROLLER: Added conflicting route to response: ID={}, Name='{}'",
+                        e.getConflictingRoute().id(), e.getConflictingRoute().name());
+            } else {
+                log.error("CONTROLLER: Response will NOT contain route data because conflicting route is NULL");
+            }
             return Response.status(Response.Status.CONFLICT)
-                    .entity(Map.of("error", e.getMessage(), "type", "DUPLICATE_NAME"))
+                    .entity(response)
                     .build();
         } catch (RouteZeroDistanceException e) {
             log.warn("CONTROLLER: Zero distance route validation failed: {}", e.getMessage());
+            Map<String, Object> response = new HashMap<>();
+            response.put("error_type", "ZERO_DISTANCE_ROUTE");
+            response.put("fromX", e.getFromX());
+            response.put("fromY", e.getFromY());
+            response.put("toX", e.getToX());
+            response.put("toY", e.getToY());
             return Response.status(Response.Status.CONFLICT)
-                    .entity(Map.of("error", e.getMessage(), "type", "ZERO_DISTANCE_ROUTE"))
+                    .entity(response)
                     .build();
         } catch (ValidationException e) {
             log.warn("CONTROLLER: Validation error during route creation: {}", e.getMessage());
@@ -131,11 +156,26 @@ public class RouteResource {
                 // Проверяем конкретные типы исключений в цепочке причин
                 if (rootCause instanceof RouteNameAlreadyExistsException) {
                     log.warn("CONTROLLER: Found RouteNameAlreadyExistsException in cause chain: {}", rootCause.getMessage());
+                    RouteNameAlreadyExistsException nameEx = (RouteNameAlreadyExistsException) rootCause;
+                    Map<String, Object> response = new HashMap<>();
+                    response.put("error_type", "DUPLICATE_NAME");
+                    if (nameEx.getConflictingRoute() != null) {
+                        response.put("route", nameEx.getConflictingRoute());
+                        log.info("CONTROLLER: Added conflicting route to RuntimeException response: ID={}, Name='{}'",
+                                nameEx.getConflictingRoute().id(), nameEx.getConflictingRoute().name());
+                    }
                     return Response.status(Response.Status.CONFLICT)
-                            .entity(Map.of("error", rootCause.getMessage(), "type", "DUPLICATE_NAME"))
+                            .entity(response)
                             .build();
                 } else if (rootCause instanceof RouteZeroDistanceException) {
                     log.warn("CONTROLLER: Found RouteZeroDistanceException in cause chain: {}", rootCause.getMessage());
+                    RouteZeroDistanceException zeroEx = (RouteZeroDistanceException) rootCause;
+                    Map<String, Object> response = new HashMap<>();
+                    response.put("error_type", "ZERO_DISTANCE_ROUTE");
+                    response.put("fromX", zeroEx.getFromX());
+                    response.put("fromY", zeroEx.getFromY());
+                    response.put("toX", zeroEx.getToX());
+                    response.put("toY", zeroEx.getToY());
                     return Response.status(Response.Status.CONFLICT)
                             .entity(Map.of("error", rootCause.getMessage(), "type", "ZERO_DISTANCE_ROUTE"))
                             .build();
@@ -263,16 +303,31 @@ public class RouteResource {
         try {
             RouteDto updated = routeService.updateRoute(dto);
             log.info("Route updated successfully: {}", updated.id());
-            return Response.ok(updated).build();
+            Map<String, Object> response = new HashMap<>();
+            response.put("route", updated);
+            return Response.ok(response).build();
         } catch (RouteNameAlreadyExistsException e) {
             log.warn("Route name already exists on update: {}", e.getMessage());
+            Map<String, Object> response = new HashMap<>();
+            response.put("error_type", "DUPLICATE_NAME");
+            if (e.getConflictingRoute() != null) {
+                response.put("route", e.getConflictingRoute());
+                log.info("CONTROLLER: Added conflicting route to update response: ID={}, Name='{}'",
+                        e.getConflictingRoute().id(), e.getConflictingRoute().name());
+            }
             return Response.status(Response.Status.CONFLICT)
-                    .entity(Map.of("error", e.getMessage(), "type", "DUPLICATE_NAME"))
+                    .entity(response)
                     .build();
         } catch (RouteZeroDistanceException e) {
             log.warn("Zero distance route validation failed on update: {}", e.getMessage());
+            Map<String, Object> response = new HashMap<>();
+            response.put("error_type", "ZERO_DISTANCE_ROUTE");
+            response.put("fromX", e.getFromX());
+            response.put("fromY", e.getFromY());
+            response.put("toX", e.getToX());
+            response.put("toY", e.getToY());
             return Response.status(Response.Status.CONFLICT)
-                    .entity(Map.of("error", e.getMessage(), "type", "ZERO_DISTANCE_ROUTE"))
+                    .entity(response)
                     .build();
         } catch (ValidationException e) {
             log.warn("Validation error during route update: {}", e.getMessage());

@@ -96,7 +96,12 @@ public class RouteServiceMB {
                 if (normalizedName.equals(candidateNormalizedName)) {
                     log.error("VALIDATION: Route with normalized name '{}' already exists with ID: {} (original name: '{}')",
                              normalizedName, candidate.getId(), candidate.getName());
-                    throw new RouteNameAlreadyExistsException(name.trim(), candidate.getId());
+                    RouteDto conflictingRouteDto = RouteMapper.toDto(candidate);
+                    log.info("SERVICE: Created conflicting RouteDto: {}", conflictingRouteDto);
+                    log.info("SERVICE: RouteDto details - ID: {}, Name: '{}'",
+                            conflictingRouteDto.id(),
+                            conflictingRouteDto.name());
+                    throw new RouteNameAlreadyExistsException(name.trim(), conflictingRouteDto);
                 }
             }
         }
@@ -130,7 +135,12 @@ public class RouteServiceMB {
                 if (normalizedName.equals(candidateNormalizedName)) {
                     log.error("UPDATE VALIDATION: Route with normalized name '{}' already exists with ID: {} (original name: '{}'), excluding: {}",
                              normalizedName, candidate.getId(), candidate.getName(), excludeRouteId);
-                    throw new RouteNameAlreadyExistsException(name.trim(), candidate.getId());
+                    RouteDto conflictingRouteDto = RouteMapper.toDto(candidate);
+                    log.info("UPDATE SERVICE: Created conflicting RouteDto: {}", conflictingRouteDto);
+                    log.info("UPDATE SERVICE: RouteDto details - ID: {}, Name: '{}'",
+                             (conflictingRouteDto != null ? conflictingRouteDto.id() : "NULL"),
+                             (conflictingRouteDto != null ? conflictingRouteDto.name() : "NULL"));
+                    throw new RouteNameAlreadyExistsException(name.trim(), conflictingRouteDto);
                 }
             }
         }
@@ -980,26 +990,52 @@ public class RouteServiceMB {
         if (message == null && e.getCause() != null) {
             message = e.getCause().getMessage();
         }
-        
+
         if (message == null) {
             return new RuntimeException("Неизвестный конфликт данных маршрута");
         }
-        
+
         // Определяем тип constraint violation для МАРШРУТОВ
         if (message.contains("routes_name") || message.contains("route") && message.contains("name")) {
             // Дублирующееся название маршрута
             if (dto.name() != null) {
-                return new RouteNameAlreadyExistsException(dto.name().trim());
+                try {
+                    // Ищем конфликтующий маршрут
+                    List<Route> conflictingRoutes = em.createQuery(
+                                    "SELECT r FROM Route r WHERE LOWER(r.name) = LOWER(:name)",
+                                    Route.class)
+                            .setParameter("name", dto.name().trim())
+                            .getResultList();
+
+                    if (!conflictingRoutes.isEmpty()) {
+                        Route conflictingRoute = conflictingRoutes.get(0);
+                        RouteDto conflictingRouteDto = RouteMapper.toDto(conflictingRoute);
+                        log.info("Found conflicting route: ID={}, Name='{}'",
+                                conflictingRouteDto.id(), conflictingRouteDto.name());
+                        return new RouteNameAlreadyExistsException(dto.name().trim(), conflictingRouteDto);
+                    }
+
+                    // Если не нашли, значит constraint violation был по другой причине
+                    // или маршрут уже удален/изменен - просто возвращаем исключение без деталей
+                    log.warn("Constraint violation for name '{}' but no conflicting route found in DB",
+                            dto.name().trim());
+                    return new RouteNameAlreadyExistsException(dto.name().trim());
+
+                } catch (Exception ex) {
+                    log.error("Error searching for conflicting route: {}", ex.getMessage(), ex);
+                    // При ошибке поиска возвращаем базовое исключение
+                    return new RouteNameAlreadyExistsException(dto.name().trim());
+                }
             }
         } else if (message.contains("zero") || message.contains("distance")) {
             // Маршрут с нулевым расстоянием
             if (dto.from() != null && dto.to() != null) {
                 return new RouteZeroDistanceException(
-                    dto.from().x(), dto.from().y(),
-                    dto.to().x(), dto.to().y());
+                        dto.from().x(), dto.from().y(),
+                        dto.to().x(), dto.to().y());
             }
         }
-        
+
         // Общий constraint violation для маршрутов
         return new RuntimeException("Конфликт данных маршрута: " + message);
     }

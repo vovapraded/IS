@@ -280,7 +280,7 @@ function SpecialOperations() {
     setLoadingState('add', true);
     clearError('add');
     try {
-      await api.post('/routes/special/add-between-locations', {
+      const response = await api.post('/routes/special/add-between-locations', {
         routeName: addParams.routeName,
         coordX: parseFloat(addParams.coordX),
         coordY: parseFloat(addParams.coordY),
@@ -293,6 +293,11 @@ function SpecialOperations() {
         distance: parseInt(addParams.distance),
         rating: parseInt(addParams.rating)
       });
+      
+      // Успешный ответ содержит поле route
+      if (response.data && response.data.route) {
+        console.log("Route created successfully:", response.data.route);
+      }
       
       // Сброс формы после успешного добавления
       setAddParams({
@@ -308,7 +313,39 @@ function SpecialOperations() {
       alert('Маршрут успешно добавлен!');
     } catch (err) {
       console.error("Ошибка добавления маршрута:", err);
-      setError('add', err.response?.data?.error || "Ошибка добавления маршрута");
+      
+      // Обработка детальных ошибок конфликтов
+      if (err.response && err.response.status === 409) {
+        const errorData = err.response.data;
+        console.log("409 Conflict error data:", errorData);
+        
+        if (errorData.error_type === "DUPLICATE_NAME") {
+          let message = `Маршрут с именем '${addParams.routeName}' уже существует в системе`;
+          if (errorData.route) {
+            // Данные конфликтующего маршрута в поле route
+            const conflicting = errorData.route;
+            message += `. Существующий маршрут: ID ${conflicting.id}`;
+            if (conflicting.from && conflicting.to) {
+              message += `, от (${conflicting.from.x}, ${conflicting.from.y}) до (${conflicting.to.x}, ${conflicting.to.y})`;
+            }
+            if (conflicting.distance) {
+              message += `, расстояние: ${conflicting.distance}`;
+            }
+          }
+          setError('add', message);
+        } else if (errorData.error_type === "ZERO_DISTANCE_ROUTE") {
+          let message = "Нельзя создать маршрут с нулевым расстоянием";
+          if (errorData.fromX !== undefined && errorData.fromY !== undefined &&
+              errorData.toX !== undefined && errorData.toY !== undefined) {
+            message += `. Указанные координаты: от (${errorData.fromX}, ${errorData.fromY}) до (${errorData.toX}, ${errorData.toY})`;
+          }
+          setError('add', message);
+        } else {
+          setError('add', "Конфликт данных при добавлении маршрута");
+        }
+      } else {
+        setError('add', "Ошибка добавления маршрута");
+      }
     } finally {
       setLoadingState('add', false);
     }
