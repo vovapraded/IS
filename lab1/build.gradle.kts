@@ -48,19 +48,6 @@ tasks.test {
     useJUnitPlatform()
 }
 
-// Make SQL init script available on classpath at /db/init.sql
-sourceSets {
-    named("main") {
-        resources {
-            srcDir("db")
-        }
-    }
-}
-
-// Configure WAR packaging so we can produce server.war
 tasks.war {
     archiveBaseName.set("server")
-    // By default Gradle WAR includes main outputs and runtimeClasspath deps under WEB-INF/lib
-    // Keep embedded libs to make it self-contained.
-    // Если деплоить на WildFly, лучше вынести jakarta.* как providedCompile.
 }
