@@ -20,19 +20,8 @@ function SpecialOperations() {
   const [greaterResult, setGreaterResult] = useState([]);
   const [betweenParams, setBetweenParams] = useState({ from: "", to: "", sortBy: "name" });
   const [betweenResult, setBetweenResult] = useState([]);
-  const [addParams, setAddParams] = useState({
-    routeName: "", coordX: "", coordY: "", fromX: "", fromY: "", fromName: "",
-    toX: "", toY: "", toName: "", distance: "", rating: ""
-  });
-  
-  // Список всех локаций
+  // Список всех локаций для операции поиска между локациями
   const [allLocations, setAllLocations] = useState([]);
-  const [rawLocations, setRawLocations] = useState([]); // Исходные данные локаций
-  
-  // Состояния для контроля автокомплитов
-  const [selectedRouteLocation, setSelectedRouteLocation] = useState("");
-  const [selectedFromLocation, setSelectedFromLocation] = useState("");
-  const [selectedToLocation, setSelectedToLocation] = useState("");
 
   const setLoadingState = (operation, isLoading) => {
     setLoading(prev => ({ ...prev, [operation]: isLoading }));
@@ -50,10 +39,7 @@ function SpecialOperations() {
   useEffect(() => {
     const loadAllLocations = async () => {
       try {
-        const response = await api.get('/routes/related/all-locations');
-        
-        // Сохраняем исходные данные
-        setRawLocations(response.data);
+        const response = await api.get('/routes/special/all-locations');
         
         // Форматируем локации для отображения
         const formatted = response.data.map(location => {
@@ -70,7 +56,6 @@ function SpecialOperations() {
       } catch (err) {
         console.error('Error loading locations:', err);
         setAllLocations([]);
-        setRawLocations([]);
       }
     };
     
@@ -134,7 +119,8 @@ function SpecialOperations() {
     clearError('greater');
     try {
       const response = await api.get(`/routes/special/rating-greater-than/${greaterParams.rating}`);
-      setGreaterResult(response.data);
+      // Backend теперь возвращает объект с routes внутри
+      setGreaterResult(response.data.routes || []);
     } catch (err) {
       console.error("Ошибка получения маршрутов с рейтингом больше заданного:", err);
       setError('greater', "Ошибка получения данных");
@@ -160,6 +146,7 @@ function SpecialOperations() {
       };
 
       const response = await api.get('/routes/special/between-locations', { params });
+      // Backend теперь возвращает прямо массив маршрутов
       setBetweenResult(response.data);
     } catch (err) {
       console.error("Ошибка поиска маршрутов между локациями:", err);
@@ -170,186 +157,6 @@ function SpecialOperations() {
     }
   };
 
-  // Функция для парсинга выбранной локации
-  const parseLocationSelection = (locationString) => {
-    if (!locationString) return { x: "", y: "", name: "" };
-    
-    // Если это координаты в формате "(x, y)"
-    const coordMatch = locationString.match(/^\((-?\d+(?:\.\d+)?),\s*(-?\d+(?:\.\d+)?)\)$/);
-    if (coordMatch) {
-      return {
-        x: coordMatch[1],
-        y: coordMatch[2],
-        name: ""
-      };
-    }
-    
-    // Если это название локации, находим её в исходных данных
-    const foundLocation = rawLocations.find(loc =>
-      loc.name && loc.name.trim() === locationString
-    );
-    
-    if (foundLocation) {
-      return {
-        x: foundLocation.x.toString(),
-        y: foundLocation.y.toString(),
-        name: foundLocation.name
-      };
-    }
-    
-    // Если не нашли, возвращаем только название
-    return {
-      x: "",
-      y: "",
-      name: locationString
-    };
-  };
-
-  // Обработчик выбора координат маршрута
-  const handleRouteLocationSelect = (selectedLocation) => {
-    setSelectedRouteLocation(selectedLocation || "");
-    const parsed = parseLocationSelection(selectedLocation);
-    if (parsed.x && parsed.y) {
-      setAddParams(prev => ({
-        ...prev,
-        coordX: parsed.x,
-        coordY: parsed.y
-      }));
-    }
-  };
-
-  // Обработчик выбора локации отправления
-  const handleFromLocationSelect = (selectedLocation) => {
-    setSelectedFromLocation(selectedLocation || "");
-    const parsed = parseLocationSelection(selectedLocation);
-    setAddParams(prev => ({
-      ...prev,
-      fromX: parsed.x,
-      fromY: parsed.y,
-      fromName: parsed.name
-    }));
-  };
-
-  // Обработчик выбора локации назначения
-  const handleToLocationSelect = (selectedLocation) => {
-    setSelectedToLocation(selectedLocation || "");
-    const parsed = parseLocationSelection(selectedLocation);
-    setAddParams(prev => ({
-      ...prev,
-      toX: parsed.x,
-      toY: parsed.y,
-      toName: parsed.name
-    }));
-  };
-
-  // Обработчики изменения полей - очищают автокомплит если изменились координаты
-  const handleCoordFieldChange = (field, value) => {
-    setAddParams(prev => ({...prev, [field]: value}));
-    // Очищаем автокомплит если координаты изменились
-    if (field === 'coordX' || field === 'coordY') {
-      setSelectedRouteLocation("");
-    }
-  };
-
-  const handleFromFieldChange = (field, value) => {
-    setAddParams(prev => ({...prev, [field]: value}));
-    // Очищаем автокомплит если координаты или название изменились
-    if (field === 'fromX' || field === 'fromY' || field === 'fromName') {
-      setSelectedFromLocation("");
-    }
-  };
-
-  const handleToFieldChange = (field, value) => {
-    setAddParams(prev => ({...prev, [field]: value}));
-    // Очищаем автокомплит если координаты или название изменились
-    if (field === 'toX' || field === 'toY' || field === 'toName') {
-      setSelectedToLocation("");
-    }
-  };
-
-  // 5. Добавить маршрут между локациями
-  const handleAddBetweenLocations = async () => {
-    const requiredFields = ['routeName', 'coordX', 'coordY', 'fromX', 'fromY', 'toX', 'toY', 'distance', 'rating'];
-    const missingFields = requiredFields.filter(field => !addParams[field]);
-    
-    if (missingFields.length > 0) {
-      setError('add', 'Заполните все обязательные поля');
-      return;
-    }
-    
-    setLoadingState('add', true);
-    clearError('add');
-    try {
-      const response = await api.post('/routes/special/add-between-locations', {
-        routeName: addParams.routeName,
-        coordX: parseFloat(addParams.coordX),
-        coordY: parseFloat(addParams.coordY),
-        fromX: parseFloat(addParams.fromX),
-        fromY: parseFloat(addParams.fromY),
-        fromName: addParams.fromName || null,
-        toX: parseFloat(addParams.toX),
-        toY: parseFloat(addParams.toY),
-        toName: addParams.toName || null,
-        distance: parseInt(addParams.distance),
-        rating: parseInt(addParams.rating)
-      });
-      
-      // Успешный ответ содержит поле route
-      if (response.data && response.data.route) {
-        console.log("Route created successfully:", response.data.route);
-      }
-      
-      // Сброс формы после успешного добавления
-      setAddParams({
-        routeName: "", coordX: "", coordY: "", fromX: "", fromY: "", fromName: "",
-        toX: "", toY: "", toName: "", distance: "", rating: ""
-      });
-      
-      // Очищаем автокомплиты
-      setSelectedRouteLocation("");
-      setSelectedFromLocation("");
-      setSelectedToLocation("");
-      
-      alert('Маршрут успешно добавлен!');
-    } catch (err) {
-      console.error("Ошибка добавления маршрута:", err);
-      
-      // Обработка детальных ошибок конфликтов
-      if (err.response && err.response.status === 409) {
-        const errorData = err.response.data;
-        console.log("409 Conflict error data:", errorData);
-        
-        if (errorData.error_type === "DUPLICATE_NAME") {
-          let message = `Маршрут с именем '${addParams.routeName}' уже существует в системе`;
-          if (errorData.route) {
-            // Данные конфликтующего маршрута в поле route
-            const conflicting = errorData.route;
-            message += `. Существующий маршрут: ID ${conflicting.id}`;
-            if (conflicting.from && conflicting.to) {
-              message += `, от (${conflicting.from.x}, ${conflicting.from.y}) до (${conflicting.to.x}, ${conflicting.to.y})`;
-            }
-            if (conflicting.distance) {
-              message += `, расстояние: ${conflicting.distance}`;
-            }
-          }
-          setError('add', message);
-        } else if (errorData.error_type === "ZERO_DISTANCE_ROUTE") {
-          let message = "Нельзя создать маршрут с нулевым расстоянием";
-          if (errorData.fromX !== undefined && errorData.fromY !== undefined &&
-              errorData.toX !== undefined && errorData.toY !== undefined) {
-            message += `. Указанные координаты: от (${errorData.fromX}, ${errorData.fromY}) до (${errorData.toX}, ${errorData.toY})`;
-          }
-          setError('add', message);
-        } else {
-          setError('add', "Конфликт данных при добавлении маршрута");
-        }
-      } else {
-        setError('add', "Ошибка добавления маршрута");
-      }
-    } finally {
-      setLoadingState('add', false);
-    }
-  };
 
   const renderRouteTable = (routes) => (
     <Table size="small">
@@ -605,232 +412,6 @@ function SpecialOperations() {
         </AccordionDetails>
       </Accordion>
 
-      {/* Операция 5: Добавить маршрут */}
-      <Accordion>
-        <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-          <Typography variant="h6">5. Добавить маршрут между локациями</Typography>
-        </AccordionSummary>
-        <AccordionDetails>
-          <Box>
-            {/* Основная информация */}
-            <Typography variant="h6" sx={{ mb: 2, fontWeight: 'bold', color: 'primary.main' }}>
-              Основная информация
-            </Typography>
-            
-            <Grid container spacing={2} sx={{ mb: 3 }}>
-              <Grid item xs={12}>
-                <TextField
-                  label="Название маршрута"
-                  value={addParams.routeName}
-                  onChange={(e) => setAddParams(prev => ({...prev, routeName: e.target.value}))}
-                  fullWidth
-                  required
-                />
-              </Grid>
-              
-              <Grid item xs={12} sm={6}>
-                <TextField
-                  label="Расстояние"
-                  type="number"
-                  value={addParams.distance}
-                  onChange={(e) => setAddParams(prev => ({...prev, distance: e.target.value}))}
-                  fullWidth
-                  required
-                  inputProps={{ min: 2 }}
-                  helperText="Минимум 2"
-                />
-              </Grid>
-              
-              <Grid item xs={12} sm={6}>
-                <TextField
-                  label="Рейтинг"
-                  type="number"
-                  value={addParams.rating}
-                  onChange={(e) => setAddParams(prev => ({...prev, rating: e.target.value}))}
-                  fullWidth
-                  required
-                  inputProps={{ min: 1, max: 5 }}
-                  helperText="От 1 до 5"
-                />
-              </Grid>
-            </Grid>
-
-            {/* Координаты маршрута */}
-            <Typography variant="h6" sx={{ mb: 2, fontWeight: 'bold', color: 'primary.main' }}>
-              Координаты маршрута
-            </Typography>
-            
-            <Grid container spacing={2} sx={{ mb: 3 }}>
-              <Grid item xs={12}>
-                <Autocomplete
-                  options={allLocations}
-                  value={selectedRouteLocation}
-                  onChange={(event, newValue) => handleRouteLocationSelect(newValue)}
-                  renderInput={(params) => (
-                    <TextField
-                      {...params}
-                      label="Выбрать координаты из существующих локаций (необязательно)"
-                      placeholder="Выберите локацию для копирования координат"
-                      fullWidth
-                    />
-                  )}
-                  sx={{ mb: 2 }}
-                />
-              </Grid>
-              
-              <Grid item xs={12} sm={6}>
-                <TextField
-                  label="X координата"
-                  type="number"
-                  value={addParams.coordX}
-                  onChange={(e) => handleCoordFieldChange('coordX', e.target.value)}
-                  fullWidth
-                  required
-                />
-              </Grid>
-              
-              <Grid item xs={12} sm={6}>
-                <TextField
-                  label="Y координата"
-                  type="number"
-                  value={addParams.coordY}
-                  onChange={(e) => handleCoordFieldChange('coordY', e.target.value)}
-                  fullWidth
-                  required
-                  inputProps={{ max: 807 }}
-                  helperText="Максимум 807"
-                />
-              </Grid>
-            </Grid>
-
-            {/* Точка отправления */}
-            <Typography variant="h6" sx={{ mb: 2, fontWeight: 'bold', color: 'primary.main' }}>
-              Точка отправления
-            </Typography>
-            
-            <Grid container spacing={2} sx={{ mb: 3 }}>
-              <Grid item xs={12}>
-                <Autocomplete
-                  options={allLocations}
-                  value={selectedFromLocation}
-                  onChange={(event, newValue) => handleFromLocationSelect(newValue)}
-                  renderInput={(params) => (
-                    <TextField
-                      {...params}
-                      label="Выбрать существующую локацию (необязательно)"
-                      placeholder="Выберите локацию или введите координаты вручную"
-                      fullWidth
-                    />
-                  )}
-                  sx={{ mb: 2 }}
-                />
-              </Grid>
-              
-              <Grid item xs={12} sm={4}>
-                <TextField
-                  label="X"
-                  type="number"
-                  value={addParams.fromX}
-                  onChange={(e) => handleFromFieldChange('fromX', e.target.value)}
-                  fullWidth
-                  required
-                />
-              </Grid>
-              
-              <Grid item xs={12} sm={4}>
-                <TextField
-                  label="Y"
-                  type="number"
-                  value={addParams.fromY}
-                  onChange={(e) => handleFromFieldChange('fromY', e.target.value)}
-                  fullWidth
-                  required
-                />
-              </Grid>
-              
-              <Grid item xs={12} sm={4}>
-                <TextField
-                  label="Название (необязательно)"
-                  value={addParams.fromName}
-                  onChange={(e) => handleFromFieldChange('fromName', e.target.value)}
-                  fullWidth
-                />
-              </Grid>
-            </Grid>
-
-            {/* Точка назначения */}
-            <Typography variant="h6" sx={{ mb: 2, fontWeight: 'bold', color: 'primary.main' }}>
-              Точка назначения
-            </Typography>
-            
-            <Grid container spacing={2} sx={{ mb: 3 }}>
-              <Grid item xs={12}>
-                <Autocomplete
-                  options={allLocations}
-                  value={selectedToLocation}
-                  onChange={(event, newValue) => handleToLocationSelect(newValue)}
-                  renderInput={(params) => (
-                    <TextField
-                      {...params}
-                      label="Выбрать существующую локацию (необязательно)"
-                      placeholder="Выберите локацию или введите координаты вручную"
-                      fullWidth
-                    />
-                  )}
-                  sx={{ mb: 2 }}
-                />
-              </Grid>
-              
-              <Grid item xs={12} sm={4}>
-                <TextField
-                  label="X"
-                  type="number"
-                  value={addParams.toX}
-                  onChange={(e) => handleToFieldChange('toX', e.target.value)}
-                  fullWidth
-                  required
-                />
-              </Grid>
-              
-              <Grid item xs={12} sm={4}>
-                <TextField
-                  label="Y"
-                  type="number"
-                  value={addParams.toY}
-                  onChange={(e) => handleToFieldChange('toY', e.target.value)}
-                  fullWidth
-                  required
-                />
-              </Grid>
-              
-              <Grid item xs={12} sm={4}>
-                <TextField
-                  label="Название (необязательно)"
-                  value={addParams.toName}
-                  onChange={(e) => handleToFieldChange('toName', e.target.value)}
-                  fullWidth
-                />
-              </Grid>
-            </Grid>
-
-            {/* Кнопка добавления */}
-            <Box sx={{ display: 'flex', justifyContent: 'center', mt: 3 }}>
-              <Button
-                variant="contained"
-                onClick={handleAddBetweenLocations}
-                startIcon={<PlayArrowIcon />}
-                disabled={loading.add}
-                size="large"
-                sx={{ minWidth: 200 }}
-              >
-                Добавить маршрут
-              </Button>
-            </Box>
-            
-            {errors.add && <Alert severity="error" sx={{ mt: 2 }}>{errors.add}</Alert>}
-          </Box>
-        </AccordionDetails>
-      </Accordion>
     </Paper>
   );
 }

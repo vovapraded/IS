@@ -823,35 +823,6 @@ public class RouteServiceMB {
                 .collect(Collectors.toList());
     }
 
-    @Lock(LockType.WRITE)
-    @AccessTimeout(value = 60, unit = TimeUnit.SECONDS)
-    public RouteDto addRouteBetweenLocations(String routeName, Double coordX, Double coordY,
-                                           Double fromX, double fromY, String fromName,
-                                           Double toX, double toY, String toName,
-                                           Long distance, Long rating) {
-        log.info("Adding route between locations {} and {}", fromName, toName);
-        
-        // Проверяем уникальность имени маршрута в транзакции
-        validateRouteNameUniquenessInTransaction(routeName);
-        
-        
-        // Проверяем, что маршрут не является "нулевым"
-        log.info("SERVICE: Validating that new route between locations is not zero distance: from=({}, {}) to=({}, {})",
-                fromX, fromY, toX, toY);
-        validateZeroDistanceRoute(fromX, fromY, toX, toY);
-        log.info("SERVICE: Zero distance validation passed for route between locations");
-        
-        // Используем существующий метод createRoute с правильной структурой
-        CoordinatesDto coordinatesDto = new CoordinatesDto(null, coordX.floatValue(), coordY, null, null);
-        LocationDto fromDto = new LocationDto(null, fromX, fromY, fromName, null, null);
-        LocationDto toDto = new LocationDto(null, toX, toY, toName, null, null);
-        
-        RouteCreateDto routeCreateDto = new RouteCreateDto(
-            routeName, coordinatesDto, fromDto, toDto, distance, rating
-        );
-        
-        return createRoute(routeCreateDto);
-    }
 
     // Новые методы для работы с связанными объектами
 

@@ -91,7 +91,7 @@ function ImportRoutes() {
         fileContent: fileContent
       };
 
-      const response = await api.post('/routes/import-csv', requestData);
+      const response = await api.post('/import/routes', requestData);
       setImportResult(response.data);
       
       // Очищаем форму при успешном импорте
@@ -106,7 +106,10 @@ function ImportRoutes() {
     } catch (err) {
       console.error('Import error:', err);
       if (err.response && err.response.data) {
-        if (typeof err.response.data === 'string') {
+        // Если сервер вернул структурированный ответ с результатом импорта (включая ошибки)
+        if (err.response.data.status && err.response.data.errors) {
+          setImportResult(err.response.data);
+        } else if (typeof err.response.data === 'string') {
           setError(err.response.data);
         } else if (err.response.data.error) {
           setError(err.response.data.error);
