@@ -18,12 +18,8 @@ repositories {
     mavenCentral()
 }
 
-val jakartaVersion = "3.1.0"
-val weldVersion = "5.0.0.Final"
-val hibernateVersion = "6.3.0.Final"
-val lombokVersion = "1.18.30" // актуальная версия на 2024
+val lombokVersion = "1.18.30"
 val swaggerVersion = "2.2.8"
-val openApiVersion = "3.0.1"
 
 dependencies {
     // Jakarta EE APIs - provided by WildFly
@@ -34,35 +30,17 @@ dependencies {
     providedCompile("jakarta.servlet:jakarta.servlet-api:6.0.0")
     providedCompile("jakarta.enterprise:jakarta.enterprise.cdi-api:4.0.1")
 
-    // Lombok — только на compile-time
+    // Lombok
     compileOnly("org.projectlombok:lombok:$lombokVersion")
     annotationProcessor("org.projectlombok:lombok:$lombokVersion")
 
-    // OpenAPI/Swagger dependencies - совместимые с WildFly
+    // OpenAPI/Swagger dependencies
+    implementation("org.webjars:swagger-ui:5.10.3")
     implementation("io.swagger.core.v3:swagger-core-jakarta:$swaggerVersion")
     implementation("io.swagger.core.v3:swagger-jaxrs2-jakarta:$swaggerVersion")
     implementation("io.swagger.core.v3:swagger-annotations-jakarta:$swaggerVersion")
     implementation("io.swagger.core.v3:swagger-models-jakarta:$swaggerVersion")
     implementation("io.swagger.core.v3:swagger-integration-jakarta:$swaggerVersion")
-    
-    // Swagger UI статические ресурсы через WebJars
-    implementation("org.webjars:swagger-ui:5.10.3")
-    
-    // Jackson для JSON обработки (если не provided by WildFly)
-    implementation("com.fasterxml.jackson.core:jackson-core:2.15.2")
-    implementation("com.fasterxml.jackson.core:jackson-databind:2.15.2")
-    implementation("com.fasterxml.jackson.core:jackson-annotations:2.15.2")
-
-    // Тесты
-    testImplementation("org.junit.jupiter:junit-jupiter:5.10.0")
-    
-    // Для локального тестирования - добавляем как testImplementation
-    testImplementation("org.jboss.weld.se:weld-se-core:$weldVersion")
-    testImplementation("org.glassfish.jersey.containers:jersey-container-servlet:3.1.0")
-    testImplementation("org.glassfish.jersey.inject:jersey-hk2:3.1.0")
-    testImplementation("org.hibernate.orm:hibernate-core:$hibernateVersion")
-    testImplementation("com.h2database:h2:2.2.224")
-    testImplementation("org.postgresql:postgresql:42.6.0")
 }
 
 

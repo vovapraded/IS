@@ -11,7 +11,6 @@ import jakarta.ws.rs.core.Context;
 
 import java.io.InputStream;
 import java.net.URI;
-import java.nio.charset.StandardCharsets;
 import java.util.logging.Logger;
 
 @Path("/")
@@ -37,7 +36,7 @@ public class SwaggerResource {
         } catch (Exception e) {
             log.severe("Error redirecting to Swagger UI: " + e.getMessage());
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
-                .entity("Error redirecting to Swagger UI")
+                .entity("{\"error\": \"Error redirecting to Swagger UI\"}")
                 .build();
         }
     }
@@ -49,7 +48,7 @@ public class SwaggerResource {
     @Path("/swagger-ui")
     @Produces(MediaType.TEXT_HTML)
     public Response swaggerUi() {
-        return serveSwaggerIndex();
+        return createSwaggerUiResponse();
     }
 
     /**
@@ -59,7 +58,7 @@ public class SwaggerResource {
     @Path("/swagger-ui/index.html")
     @Produces(MediaType.TEXT_HTML)
     public Response swaggerUiIndex() {
-        return serveSwaggerIndex();
+        return createSwaggerUiResponse();
     }
 
     /**
@@ -69,7 +68,7 @@ public class SwaggerResource {
     @Path("/webjars/{path:.*}")
     public Response serveWebJars(@PathParam("path") String path) {
         try {
-            // Construct the resource path for WebJars
+            // Try direct WebJar path
             String resourcePath = "/META-INF/resources/webjars/" + path;
             
             InputStream resource = getClass().getResourceAsStream(resourcePath);
@@ -81,7 +80,7 @@ public class SwaggerResource {
             String contentType = getContentTypeFromPath(path);
             
             return Response.ok(resource, contentType)
-                .header("Cache-Control", "public, max-age=31536000") // Cache for 1 year
+                .header("Cache-Control", "public, max-age=31536000")
                 .build();
                 
         } catch (Exception e) {
@@ -90,27 +89,79 @@ public class SwaggerResource {
         }
     }
 
-    private Response serveSwaggerIndex() {
+    private Response createSwaggerUiResponse() {
         try {
-            InputStream htmlStream = getClass().getResourceAsStream("/swagger-ui.html");
-            if (htmlStream == null) {
-                log.severe("swagger-ui.html template not found in resources");
-                return Response.status(Response.Status.NOT_FOUND)
-                    .entity("Swagger UI template not found")
-                    .build();
-            }
-
-            String htmlContent = new String(htmlStream.readAllBytes(), StandardCharsets.UTF_8);
-            
-            // Replace placeholder with actual base URL
             String baseUrl = uriInfo.getBaseUri().toString();
             if (baseUrl.endsWith("/")) {
                 baseUrl = baseUrl.substring(0, baseUrl.length() - 1);
             }
             
-            htmlContent = htmlContent.replace("{{API_BASE_URL}}", baseUrl);
+            // Create minimal HTML using WebJars resources
+            String html = """
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Routes Management API - Swagger UI</title>
+    <link rel="stylesheet" type="text/css" href="webjars/swagger-ui/5.10.3/swagger-ui.css" />
+    <link rel="icon" type="image/png" href="webjars/swagger-ui/5.10.3/favicon-32x32.png" sizes="32x32" />
+    <style>
+        html {
+            box-sizing: border-box;
+            overflow: -moz-scrollbars-vertical;
+            overflow-y: scroll;
+        }
+        *, *:before, *:after {
+            box-sizing: inherit;
+        }
+        body {
+            margin:0;
+            background: #fafafa;
+        }
+    </style>
+</head>
+<body>
+    <div id="swagger-ui"></div>
+    <script src="webjars/swagger-ui/5.10.3/swagger-ui-bundle.js" charset="UTF-8"></script>
+    <script src="webjars/swagger-ui/5.10.3/swagger-ui-standalone-preset.js" charset="UTF-8"></script>
+    <script>
+        window.onload = function() {
+            console.log('Loading Swagger UI...');
+            console.log('API URL: %s/openapi.json');
+            
+            const ui = SwaggerUIBundle({
+                url: '%s/openapi.json',
+                dom_id: '#swagger-ui',
+                deepLinking: true,
+                presets: [
+                    SwaggerUIBundle.presets.apis,
+                    SwaggerUIStandalonePreset
+                ],
+                plugins: [
+                    SwaggerUIBundle.plugins.DownloadUrl
+                ],
+                layout: "StandaloneLayout",
+                validatorUrl: null,
+                onComplete: function() {
+                    console.log('Swagger UI loaded successfully');
+                },
+                onFailure: function(err) {
+                    console.error('Failed to load Swagger UI:', err);
+                    document.getElementById('swagger-ui').innerHTML =
+                        '<h2>Failed to load Swagger UI</h2>' +
+                        '<p>Error: ' + JSON.stringify(err) + '</p>' +
+                        '<p>Trying to load API spec from: <a href="%s/openapi.json">%s/openapi.json</a></p>';
+                }
+            });
+            
+            window.ui = ui;
+        };
+    </script>
+</body>
+</html>
+            """.formatted(baseUrl, baseUrl, baseUrl, baseUrl);
 
-            return Response.ok(htmlContent, MediaType.TEXT_HTML).build();
+            return Response.ok(html, MediaType.TEXT_HTML).build();
             
         } catch (Exception e) {
             log.severe("Error serving Swagger UI: " + e.getMessage());
