@@ -46,7 +46,6 @@ public class ApplicationConfig extends Application {
         classes.add(org.example.domain.coordinates.controller.CoordinatesResource.class);
         classes.add(org.example.domain.location.controller.LocationResource.class);
         classes.add(org.example.domain.import_history.controller.ImportResource.class);
-        classes.add(org.example.domain.import_history.controller.TestImportResource.class);
         
         // Добавляем Swagger ресурсы
         classes.add(org.example.config.OpenApiResource.class);

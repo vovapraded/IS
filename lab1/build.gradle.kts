@@ -45,6 +45,9 @@ dependencies {
     implementation("io.swagger.core.v3:swagger-models-jakarta:$swaggerVersion")
     implementation("io.swagger.core.v3:swagger-integration-jakarta:$swaggerVersion")
     
+    // Swagger UI статические ресурсы через WebJars
+    implementation("org.webjars:swagger-ui:5.10.3")
+    
     // Jackson для JSON обработки (если не provided by WildFly)
     implementation("com.fasterxml.jackson.core:jackson-core:2.15.2")
     implementation("com.fasterxml.jackson.core:jackson-databind:2.15.2")
