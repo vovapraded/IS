@@ -6,6 +6,8 @@ import jakarta.ejb.ConcurrencyManagementType;
 import jakarta.ejb.Lock;
 import jakarta.ejb.LockType;
 import jakarta.ejb.Stateless;
+import jakarta.ejb.TransactionAttribute;
+import jakarta.ejb.TransactionAttributeType;
 import jakarta.inject.Inject;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
@@ -113,9 +115,14 @@ public class RouteServiceMB {
      * Использует нормализованное сравнение имен для предотвращения дубликатов
      * Применяет полную блокировку таблицы для предотвращения race conditions
      */
+    /**
+     * Проверяет уникальность имени маршрута при обновлении с использованием блокировок
+     * Использует те же принципы что и валидация при создании для предотвращения race conditions
+     */
     private void validateRouteNameUniquenessForUpdate(String name, Integer excludeRouteId) {
         log.info("UPDATE VALIDATION: Checking route name uniqueness for update: '{}', excluding route ID: {}", name, excludeRouteId);
         if (name == null || name.trim().isEmpty()) {
+            log.info("UPDATE VALIDATION: Name is empty, skipping uniqueness check");
             return; // пустые имена не проверяем
         }
         
@@ -123,23 +130,25 @@ public class RouteServiceMB {
         log.info("UPDATE VALIDATION: Normalized name for uniqueness check: '{}'", normalizedName);
         
         // Блокируем ВСЕ записи в таблице Route для предотвращения race condition
-        log.info("UPDATE VALIDATION: Applying table-level pessimistic lock for route uniqueness check");
+        log.info("UPDATE VALIDATION: Applying table-level pessimistic lock for route uniqueness check during update");
         List<Route> allRoutes = em.createQuery("SELECT r FROM Route r", Route.class)
             .setLockMode(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)
             .getResultList();
         
         // Проверяем нормализованные имена на Java-стороне для точного сравнения
         for (Route candidate : allRoutes) {
-            if (candidate.getName() != null && !candidate.getId().equals(excludeRouteId)) {
+            // Исключаем обновляемый маршрут
+            if (candidate.getId().equals(excludeRouteId)) {
+                continue;
+            }
+            
+            if (candidate.getName() != null) {
                 String candidateNormalizedName = normalizeRouteName(candidate.getName());
                 if (normalizedName.equals(candidateNormalizedName)) {
                     log.error("UPDATE VALIDATION: Route with normalized name '{}' already exists with ID: {} (original name: '{}'), excluding: {}",
                              normalizedName, candidate.getId(), candidate.getName(), excludeRouteId);
                     RouteDto conflictingRouteDto = RouteMapper.toDto(candidate);
                     log.info("UPDATE SERVICE: Created conflicting RouteDto: {}", conflictingRouteDto);
-                    log.info("UPDATE SERVICE: RouteDto details - ID: {}, Name: '{}'",
-                             (conflictingRouteDto != null ? conflictingRouteDto.id() : "NULL"),
-                             (conflictingRouteDto != null ? conflictingRouteDto.name() : "NULL"));
                     throw new RouteNameAlreadyExistsException(name.trim(), conflictingRouteDto);
                 }
             }
@@ -158,9 +167,28 @@ public class RouteServiceMB {
             return; // некорректные координаты не проверяем
         }
         
-        // Проверяем, что начальная и конечная точки не совпадают
-        if (fromX.equals(toX) && fromY.equals(toY)) {
-            log.error("ZERO_DISTANCE VALIDATION: Route has identical start and end points: ({}, {})", fromX, fromY);
+        // Проверяем, что начальная и конечная точки не совпадают с учетом погрешности для чисел с плавающей точкой
+        // ИСПРАВЛЕНО: Увеличил epsilon до более разумного значения для координат
+        double epsilon = 1e-6; // Более разумная величина для сравнения координат
+        
+        // ДЕТАЛЬНОЕ ЛОГИРОВАНИЕ ДЛЯ ОТЛАДКИ
+        double diffX = Math.abs(fromX - toX);
+        double diffY = Math.abs(fromY - toY);
+        boolean sameX = diffX < epsilon;
+        boolean sameY = diffY < epsilon;
+        
+        log.info("ZERO_DISTANCE VALIDATION DETAILS: diffX={}, diffY={}, epsilon={}, sameX={}, sameY={}",
+                diffX, diffY, epsilon, sameX, sameY);
+        
+        // ИСПРАВЛЕНО: Добавлена дополнительная проверка - точки считаются одинаковыми только если расстояние между ними меньше epsilon
+        double distance = Math.sqrt(Math.pow(diffX, 2) + Math.pow(diffY, 2));
+        boolean isZeroDistance = distance < epsilon;
+        
+        log.info("ZERO_DISTANCE VALIDATION: Distance between points = {}, isZeroDistance = {}", distance, isZeroDistance);
+        
+        if (isZeroDistance) {
+            log.error("ZERO_DISTANCE VALIDATION: Route has identical start and end points: from=({}, {}) to=({}, {})", fromX, fromY, toX, toY);
+            log.error("ZERO_DISTANCE VALIDATION ERROR DETAILS: distance={} < epsilon={}", distance, epsilon);
             throw new RouteZeroDistanceException(fromX, fromY, toX, toY);
         }
         log.info("ZERO_DISTANCE VALIDATION: Route has different start and end points - validation passed");
@@ -444,27 +472,56 @@ public class RouteServiceMB {
     @Lock(LockType.WRITE)
     @AccessTimeout(value = 60, unit = TimeUnit.SECONDS)
     public RouteDto updateRoute(RouteUpdateDto dto) {
-        log.info("Updating route {}", dto);
+        log.info("UPDATE SERVICE: Starting route update for ID: {}", dto.id());
         try {
+            log.info("UPDATE SERVICE: Validating route name uniqueness");
             // Проверяем уникальность имени маршрута при обновлении
             if (dto.name() != null) {
                 validateRouteNameUniquenessForUpdate(dto.name(), dto.id());
             }
+            log.info("UPDATE SERVICE: Name validation passed");
             
-            
+            log.info("UPDATE SERVICE: Validating zero distance");
             // Проверяем, что обновляемый маршрут не станет "нулевым"
             if (dto.from() != null && dto.to() != null) {
-                log.info("UPDATE: Validating that updated route is not zero distance: from=({}, {}) to=({}, {})",
+                log.info("UPDATE SERVICE: Validating that updated route is not zero distance: from=({}, {}) to=({}, {})",
                         dto.from().x(), dto.from().y(), dto.to().x(), dto.to().y());
                 validateZeroDistanceRoute(dto.from().x(), dto.from().y(), dto.to().x(), dto.to().y());
-                log.info("UPDATE: Zero distance validation passed");
+                log.info("UPDATE SERVICE: Zero distance validation passed");
             }
             
+            log.info("UPDATE SERVICE: Calling repository updateFromDto");
             Route updated = routeRepository.updateFromDto(dto);
-            return RouteMapper.toDto(updated);
-        } catch (IllegalArgumentException e) {
-            log.error("Failed to update route: {}", e.getMessage());
+            log.info("UPDATE SERVICE: Repository update completed successfully");
+            
+            log.info("UPDATE SERVICE: Converting to DTO");
+            RouteDto result = RouteMapper.toDto(updated);
+            log.info("UPDATE SERVICE: Route update completed successfully for ID: {}", dto.id());
+            return result;
+            
+        } catch (RouteNameAlreadyExistsException e) {
+            log.error("UPDATE SERVICE: Name conflict during route update: {}", e.getMessage());
             throw e;
+        } catch (RouteZeroDistanceException e) {
+            log.error("UPDATE SERVICE: Zero distance validation failed during route update: {}", e.getMessage());
+            throw e;
+        } catch (jakarta.persistence.OptimisticLockException e) {
+            log.error("UPDATE SERVICE: Optimistic lock exception during route update for ID: {} - concurrent modification detected", dto.id());
+            throw new RuntimeException("Маршрут был изменен другим пользователем. Пожалуйста, обновите страницу и повторите операцию.", e);
+        } catch (IllegalArgumentException e) {
+            log.error("UPDATE SERVICE: Invalid argument during route update: {}", e.getMessage());
+            throw e;
+        } catch (Exception e) {
+            log.error("UPDATE SERVICE: Unexpected error during route update - Type: {}, Message: {}, Cause: {}",
+                     e.getClass().getSimpleName(), e.getMessage(), e.getCause() != null ? e.getCause().getMessage() : "null", e);
+            
+            // Проверяем, является ли это constraint violation
+            if (isConstraintViolation(e)) {
+                log.error("UPDATE SERVICE: Constraint violation detected during update, converting to appropriate exception");
+                throw convertUpdateConstraintViolationToConflict(e, dto);
+            }
+            
+            throw new RuntimeException("Ошибка при обновлении маршрута: " + e.getMessage(), e);
         }
     }
 
@@ -550,13 +607,22 @@ public class RouteServiceMB {
     @Lock(LockType.WRITE)
     @AccessTimeout(value = 60, unit = TimeUnit.SECONDS)
     public void delete(Integer id) {
-        log.info("Deleting route with id {}", id);
+        log.info("DELETE SERVICE: Starting deletion for route with id {}", id);
         
-        // Проверяем зависимости для автоматического определения необходимости передачи владения
-        Map<String, Object> dependencies = checkDependencies(id);
-        boolean needsOwnershipTransfer = (Boolean) dependencies.get("needsOwnershipTransfer");
+        // Проверка существования маршрута в самом начале
+        Route routeExists = routeRepository.findById(id);
+        if (routeExists == null) {
+            log.warn("DELETE SERVICE: Route with id {} not found", id);
+            throw new IllegalArgumentException("Route not found with id: " + id);
+        }
+        log.info("DELETE SERVICE: Route with id {} exists, proceeding with deletion", id);
         
-        if (needsOwnershipTransfer) {
+        try {
+            // Проверяем зависимости для автоматического определения необходимости передачи владения
+            Map<String, Object> dependencies = checkDependencies(id);
+            boolean needsOwnershipTransfer = (Boolean) dependencies.get("needsOwnershipTransfer");
+            
+            if (needsOwnershipTransfer) {
             // Автоматически передаем владение первым доступным кандидатам
             Integer coordinatesTargetId = null;
             Integer fromLocationTargetId = null;
@@ -581,9 +647,23 @@ public class RouteServiceMB {
             }
             
             deleteWithOwnershipTransfer(id, coordinatesTargetId, fromLocationTargetId, toLocationTargetId);
-        } else {
-            // Простое удаление без передачи владения
-            deleteWithoutOwnershipTransfer(id);
+            } else {
+                // Простое удаление без передачи владения
+                deleteWithoutOwnershipTransfer(id);
+            }
+        } catch (jakarta.persistence.OptimisticLockException e) {
+            // ИСПРАВЛЕНО: Обработка OptimisticLockException при concurrent deletion
+            log.info("OptimisticLockException during deletion of route {} - concurrent modification detected, checking if route still exists", id);
+            
+            // Проверяем, существует ли еще маршрут
+            Route stillExists = routeRepository.findById(id);
+            if (stillExists == null) {
+                log.info("Route {} no longer exists after OptimisticLockException - successfully deleted by concurrent transaction", id);
+                return; // Маршрут уже удален другой транзакцией
+            } else {
+                log.warn("Route {} still exists after OptimisticLockException - rethrowing", id);
+                throw e; // Маршрут еще существует, это реальная проблема
+            }
         }
     }
 
@@ -591,14 +671,23 @@ public class RouteServiceMB {
     @AccessTimeout(value = 60, unit = TimeUnit.SECONDS)
     public void deleteWithRebinding(Integer id, Integer coordinatesTargetRouteId,
                                    Integer fromLocationTargetRouteId, Integer toLocationTargetRouteId) {
-        log.info("Deleting route with id {} and rebinding: coordinates -> {}, from -> {}, to -> {}",
+        log.info("DELETE_REBIND SERVICE: Starting deletion with rebinding for route id {}, coordinates -> {}, from -> {}, to -> {}",
             id, coordinatesTargetRouteId, fromLocationTargetRouteId, toLocationTargetRouteId);
         
-        // ИСПОЛЬЗУЕМ ЕДИНЫЙ EntityManager для всех операций
-        Route routeToDelete = em.find(Route.class, id);
-        if (routeToDelete == null) {
+        // Проверка существования маршрута в самом начале
+        Route routeExists = routeRepository.findById(id);
+        if (routeExists == null) {
+            log.warn("DELETE_REBIND SERVICE: Route with id {} not found", id);
             throw new IllegalArgumentException("Route not found with id: " + id);
         }
+        log.info("DELETE_REBIND SERVICE: Route with id {} exists, proceeding with deletion", id);
+        
+        try {
+            // ИСПОЛЬЗУЕМ ЕДИНЫЙ EntityManager для всех операций
+            Route routeToDelete = em.find(Route.class, id);
+            if (routeToDelete == null) {
+                throw new IllegalArgumentException("Route not found with id: " + id);
+            }
 
         // Получаем связанные объекты через единый EntityManager
         org.example.domain.coordinates.entity.Coordinates coordinates = routeToDelete.getCoordinates();
@@ -676,7 +765,21 @@ public class RouteServiceMB {
             cleanupUnusedLocation(toLocation.getId());
         }
 
-        log.info("Route {} successfully deleted with separate rebinding", id);
+            log.info("Route {} successfully deleted with separate rebinding", id);
+        } catch (jakarta.persistence.OptimisticLockException e) {
+            // ИСПРАВЛЕНО: Обработка OptimisticLockException при concurrent deletion с rebinding
+            log.info("OptimisticLockException during deletion with rebinding for route {} - concurrent modification detected, checking if route still exists", id);
+            
+            // Проверяем, существует ли еще маршрут
+            Route stillExists = routeRepository.findById(id);
+            if (stillExists == null) {
+                log.info("Route {} no longer exists after OptimisticLockException during rebinding - successfully deleted by concurrent transaction", id);
+                return; // Маршрут уже удален другой транзакцией
+            } else {
+                log.warn("Route {} still exists after OptimisticLockException during rebinding - rethrowing", id);
+                throw e; // Маршрут еще существует, это реальная проблема
+            }
+        }
     }
 
     private void cleanupUnusedCoordinates(Integer coordinatesId) {
@@ -943,10 +1046,12 @@ public class RouteServiceMB {
                     causeMessage.toLowerCase().contains("duplicate entry") ||
                     causeMessage.toLowerCase().contains("constraint violation") ||
                     causeMessage.toLowerCase().contains("duplicate value") ||
+                    causeMessage.toLowerCase().contains("validation failed") || // Bean Validation
                     causeMessage.contains("23505") || // PostgreSQL unique violation
                     causeMessage.contains("23000") || // MySQL integrity constraint violation
                     rootCause.getClass().getSimpleName().contains("ConstraintViolation") ||
-                    rootCause.getClass().getSimpleName().contains("IntegrityConstraint")) {
+                    rootCause.getClass().getSimpleName().contains("IntegrityConstraint") ||
+                    rootCause.getClass().getSimpleName().contains("ValidationException")) {
                     
                     log.info("CONSTRAINT CHECK: Detected constraint violation in cause: {}", causeMessage);
                     return true;
@@ -961,6 +1066,7 @@ public class RouteServiceMB {
             if (message.toLowerCase().contains("duplicate key") ||
                 message.toLowerCase().contains("unique constraint") ||
                 message.toLowerCase().contains("constraint violation") ||
+                message.toLowerCase().contains("validation failed") || // Bean Validation
                 message.toLowerCase().contains("status_marked_rollback") ||
                 message.toLowerCase().contains("duplicate entry")) {
                 
@@ -972,6 +1078,7 @@ public class RouteServiceMB {
         // Проверяем тип исключения
         if (e.getClass().getSimpleName().contains("ConstraintViolation") ||
             e.getClass().getSimpleName().contains("IntegrityConstraint") ||
+            e.getClass().getSimpleName().contains("ValidationException") ||
             e.getClass().getSimpleName().contains("SQLException")) {
             
             log.info("CONSTRAINT CHECK: Detected constraint violation by exception type: {}", e.getClass().getSimpleName());
@@ -993,6 +1100,11 @@ public class RouteServiceMB {
 
         if (message == null) {
             return new RuntimeException("Неизвестный конфликт данных маршрута");
+        }
+
+        // ДОБАВЛЕНО: Обработка Bean Validation ошибок
+        if (message.contains("Validation failed") && message.contains("distance") && message.contains("must be greater than or equal to 2")) {
+            return new IllegalArgumentException("Расстояние маршрута должно быть не менее 2");
         }
 
         // Определяем тип constraint violation для МАРШРУТОВ
@@ -1027,16 +1139,64 @@ public class RouteServiceMB {
                     return new RouteNameAlreadyExistsException(dto.name().trim());
                 }
             }
-        } else if (message.contains("zero") || message.contains("distance")) {
-            // Маршрут с нулевым расстоянием
-            if (dto.from() != null && dto.to() != null) {
-                return new RouteZeroDistanceException(
-                        dto.from().x(), dto.from().y(),
-                        dto.to().x(), dto.to().y());
-            }
         }
 
         // Общий constraint violation для маршрутов
         return new RuntimeException("Конфликт данных маршрута: " + message);
+    }
+    
+    /**
+     * Конвертирует constraint violation при обновлении в специфичные исключения для HTTP 409
+     */
+    private RuntimeException convertUpdateConstraintViolationToConflict(Exception e, RouteUpdateDto dto) {
+        String message = e.getMessage();
+        if (message == null && e.getCause() != null) {
+            message = e.getCause().getMessage();
+        }
+
+        if (message == null) {
+            return new RuntimeException("Неизвестный конфликт данных при обновлении маршрута");
+        }
+
+        // ДОБАВЛЕНО: Обработка Bean Validation ошибок при обновлении
+        if (message.contains("Validation failed") && message.contains("distance") && message.contains("must be greater than or equal to 2")) {
+            return new IllegalArgumentException("Расстояние маршрута должно быть не менее 2");
+        }
+
+        // Определяем тип constraint violation для МАРШРУТОВ при обновлении
+        if (message.contains("routes_name") || message.contains("route") && message.contains("name")) {
+            // Дублирующееся название маршрута
+            if (dto.name() != null) {
+                try {
+                    // Ищем конфликтующий маршрут
+                    List<Route> conflictingRoutes = em.createQuery(
+                                    "SELECT r FROM Route r WHERE LOWER(r.name) = LOWER(:name) AND r.id != :excludeId",
+                                    Route.class)
+                            .setParameter("name", dto.name().trim())
+                            .setParameter("excludeId", dto.id())
+                            .getResultList();
+
+                    if (!conflictingRoutes.isEmpty()) {
+                        Route conflictingRoute = conflictingRoutes.get(0);
+                        RouteDto conflictingRouteDto = RouteMapper.toDto(conflictingRoute);
+                        log.info("Found conflicting route during update: ID={}, Name='{}'",
+                                conflictingRouteDto.id(), conflictingRouteDto.name());
+                        return new RouteNameAlreadyExistsException(dto.name().trim(), conflictingRouteDto);
+                    }
+
+                    // Если не нашли, значит constraint violation был по другой причине
+                    log.warn("Constraint violation for name '{}' during update but no conflicting route found in DB",
+                            dto.name().trim());
+                    return new RouteNameAlreadyExistsException(dto.name().trim());
+
+                } catch (Exception ex) {
+                    log.error("Error searching for conflicting route during update: {}", ex.getMessage(), ex);
+                    return new RouteNameAlreadyExistsException(dto.name().trim());
+                }
+            }
+        }
+
+        // Общий constraint violation для обновления маршрутов
+        return new RuntimeException("Конфликт данных при обновлении маршрута: " + message);
     }
 }

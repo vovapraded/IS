@@ -1,0 +1,44 @@
+databaseChangeLog:
+  - changeSet:
+      id: 010-add-version-fields
+      author: system
+      comment: Add version fields for optimistic locking
+      changes:
+        - addColumn:
+            tableName: routes
+            columns:
+              - column:
+                  name: version
+                  type: BIGINT
+                  defaultValue: 0
+                  constraints:
+                    nullable: false
+        - addColumn:
+            tableName: coordinates
+            columns:
+              - column:
+                  name: version
+                  type: BIGINT
+                  defaultValue: 0
+                  constraints:
+                    nullable: false
+        - addColumn:
+            tableName: locations
+            columns:
+              - column:
+                  name: version
+                  type: BIGINT
+                  defaultValue: 0
+                  constraints:
+                    nullable: false
+
+      rollback:
+        - dropColumn:
+            tableName: routes
+            columnName: version
+        - dropColumn:
+            tableName: coordinates
+            columnName: version
+        - dropColumn:
+            tableName: locations
+            columnName: version

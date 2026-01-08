@@ -37,4 +37,8 @@ public class Coordinates {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "owner_route_id", nullable = true)
     private Route ownerRoute; // Маршрут-владелец этих координат
+
+    @jakarta.persistence.Version
+    @Column(name = "version", nullable = false)
+    private Long version;
 }

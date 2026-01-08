@@ -78,7 +78,8 @@ public class RouteRepositoryMB {
     }
 
     public Route updateFromDto(RouteUpdateDto dto) {
-        Route existing = em.find(Route.class, dto.id());
+        // Используем pessimistic write lock для предотвращения concurrent modifications
+        Route existing = em.find(Route.class, dto.id(), jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
         if (existing == null) {
             throw new IllegalArgumentException("Route not found with id: " + dto.id());
         }
@@ -86,43 +87,50 @@ public class RouteRepositoryMB {
         // Обновляем базовые поля через маппер
         RouteMapper.updateEntityFromDto(existing, dto);
         
-        // Обрабатываем связанные объекты через EntityManager
-        if (dto.coordinates() != null && dto.coordinates().id() != null) {
-            org.example.domain.coordinates.entity.Coordinates coordinates =
-                em.find(org.example.domain.coordinates.entity.Coordinates.class, dto.coordinates().id());
-            if (coordinates != null) {
-                // Обновляем поля координат
-                coordinates.setX(dto.coordinates().x());
-                coordinates.setY(dto.coordinates().y());
-                existing.setCoordinates(coordinates);
+        // Обрабатываем связанные объекты: всегда обновляем существующие связанные объекты маршрута
+        if (dto.coordinates() != null && existing.getCoordinates() != null) {
+            org.example.domain.coordinates.entity.Coordinates existingCoordinates =
+                em.find(org.example.domain.coordinates.entity.Coordinates.class,
+                       existing.getCoordinates().getId(), jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
+            if (existingCoordinates != null) {
+                // Обновляем поля существующих координат маршрута
+                existingCoordinates.setX(dto.coordinates().x());
+                existingCoordinates.setY(dto.coordinates().y());
+                // existing.setCoordinates уже установлен, просто обновляем содержимое
             }
         }
         
-        if (dto.from() != null && dto.from().id() != null) {
-            org.example.domain.location.entity.Location fromLocation =
-                em.find(org.example.domain.location.entity.Location.class, dto.from().id());
-            if (fromLocation != null) {
-                // Обновляем поля локации from
-                fromLocation.setX(dto.from().x());
-                fromLocation.setY(dto.from().y());
-                fromLocation.setName(dto.from().name());
-                existing.setFrom(fromLocation);
+        if (dto.from() != null && existing.getFrom() != null) {
+            org.example.domain.location.entity.Location existingFromLocation =
+                em.find(org.example.domain.location.entity.Location.class,
+                       existing.getFrom().getId(), jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
+            if (existingFromLocation != null) {
+                // Обновляем поля существующей from локации маршрута
+                existingFromLocation.setX(dto.from().x());
+                existingFromLocation.setY(dto.from().y());
+                existingFromLocation.setName(dto.from().name());
+                // existing.setFrom уже установлен, просто обновляем содержимое
             }
         }
         
-        if (dto.to() != null && dto.to().id() != null) {
-            org.example.domain.location.entity.Location toLocation =
-                em.find(org.example.domain.location.entity.Location.class, dto.to().id());
-            if (toLocation != null) {
-                // Обновляем поля локации to
-                toLocation.setX(dto.to().x());
-                toLocation.setY(dto.to().y());
-                toLocation.setName(dto.to().name());
-                existing.setTo(toLocation);
+        if (dto.to() != null && existing.getTo() != null) {
+            org.example.domain.location.entity.Location existingToLocation =
+                em.find(org.example.domain.location.entity.Location.class,
+                       existing.getTo().getId(), jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
+            if (existingToLocation != null) {
+                // Обновляем поля существующей to локации маршрута
+                existingToLocation.setX(dto.to().x());
+                existingToLocation.setY(dto.to().y());
+                existingToLocation.setName(dto.to().name());
+                // existing.setTo уже установлен, просто обновляем содержимое
             }
         }
         
-        // existing уже managed, изменения автоматически сохранятся при commit
+        // Принудительно синхронизируем изменения с БД для обнаружения конфликтов
+        em.flush();
+        
+        // existing уже managed, изменения сохранятся при commit
+        // PessimisticLockException будет выброшен при конфликтах блокировок
         return existing;
     }
     

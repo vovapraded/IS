@@ -98,6 +98,10 @@ public class Route {
     @Column(nullable = false)
     private Long rating;
 
+    @jakarta.persistence.Version
+    @Column(name = "version", nullable = false)
+    private Long version;
+
     @PrePersist
     protected void onCreate() {
         this.creationDate = ZonedDateTime.now();

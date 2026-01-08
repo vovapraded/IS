@@ -1,5 +1,12 @@
 package org.example.domain.route.controller;
 
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.BadRequestException;
 import jakarta.ws.rs.Consumes;
@@ -24,8 +31,7 @@ import org.example.domain.import_history.dto.ImportResultDto;
 import org.example.exception.ValidationException;
 import org.example.exception.RouteNameAlreadyExistsException;
 import org.example.exception.RouteZeroDistanceException;
-import jakarta.persistence.OptimisticLockException;
-import lombok.extern.slf4j.Slf4j;
+import java.util.logging.Logger;
 
 import java.util.HashMap;
 import java.util.List;
@@ -35,8 +41,10 @@ import java.util.stream.Collectors;
 @Path("/routes")
 @Produces(MediaType.APPLICATION_JSON)
 @Consumes(MediaType.APPLICATION_JSON)
-@Slf4j
+@Tag(name = "Routes", description = "API для управления маршрутами")
 public class RouteResource {
+
+    private static final Logger log = Logger.getLogger(RouteResource.class.getName());
 
     @Inject
     private RouteServiceMB routeService;
@@ -45,18 +53,25 @@ public class RouteResource {
     private RouteImportServiceMB routeImportService;
 
     @GET
+    @Operation(summary = "Получить все маршруты", description = "Возвращает список всех доступных маршрутов")
+    @ApiResponse(responseCode = "200", description = "Список маршрутов успешно получен")
     public List<RouteDto> getAllRoutes() {
         return routeService.findAll();
     }
 
     @GET
     @Path("/paginated")
+    @Operation(summary = "Получить маршруты с пагинацией", description = "Возвращает маршруты с пагинацией и фильтрацией")
+    @ApiResponses({
+        @ApiResponse(responseCode = "200", description = "Маршруты получены успешно"),
+        @ApiResponse(responseCode = "400", description = "Неверные параметры пагинации")
+    })
     public Response getPaginatedRoutes(
-            @QueryParam("page") @DefaultValue("0") int page,
-            @QueryParam("size") @DefaultValue("10") int size,
-            @QueryParam("nameFilter") String nameFilter,
-            @QueryParam("sortBy") @DefaultValue("id") String sortBy,
-            @QueryParam("sortDirection") @DefaultValue("asc") String sortDirection) {
+            @Parameter(description = "Номер страницы") @QueryParam("page") @DefaultValue("0") int page,
+            @Parameter(description = "Размер страницы") @QueryParam("size") @DefaultValue("10") int size,
+            @Parameter(description = "Фильтр по имени") @QueryParam("nameFilter") String nameFilter,
+            @Parameter(description = "Поле сортировки") @QueryParam("sortBy") @DefaultValue("id") String sortBy,
+            @Parameter(description = "Направление сортировки") @QueryParam("sortDirection") @DefaultValue("asc") String sortDirection) {
         
         try {
             List<RouteDto> routes = routeService.findPaginated(page, size, nameFilter, sortBy, sortDirection);
@@ -75,7 +90,7 @@ public class RouteResource {
             return Response.ok(response).build();
             
         } catch (Exception e) {
-            log.error("Pagination error: {}", e.getMessage(), e);
+            log.severe("Pagination error: " + e.getMessage());
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
                     .entity(Map.of("error", "Pagination system error: " + e.getMessage()))
                     .build();
@@ -84,45 +99,68 @@ public class RouteResource {
 
     @GET
     @Path("/{id}")
-    public RouteDto getById(@PathParam("id") Integer id) {
-        return routeService.findById(id);
+    @Operation(summary = "Получить маршрут по ID", description = "Возвращает конкретный маршрут по его идентификатору")
+    @ApiResponses({
+        @ApiResponse(responseCode = "200", description = "Маршрут найден"),
+        @ApiResponse(responseCode = "404", description = "Маршрут не найден")
+    })
+    public Response getById(@Parameter(description = "ID маршрута") @PathParam("id") Integer id) {
+        try {
+            RouteDto route = routeService.findById(id);
+            Map<String, Object> response = new HashMap<>();
+            response.put("route", route);
+            return Response.ok(response).build();
+        } catch (IllegalArgumentException e) {
+            if (e.getMessage() != null && e.getMessage().toLowerCase().contains("not found")) {
+                log.warning("Route not found: " + e.getMessage());
+                return Response.status(Response.Status.NOT_FOUND)
+                        .entity(Map.of("error", e.getMessage(), "error_type", "NOT_FOUND"))
+                        .build();
+            }
+            log.warning("Invalid argument for route retrieval: " + e.getMessage());
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity(Map.of("error", e.getMessage(), "error_type", "INVALID_ARGUMENT"))
+                    .build();
+        } catch (Exception e) {
+            log.severe("Unexpected error during route retrieval: " + e.getMessage());
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+                    .entity(Map.of("error", "Не удалось получить маршрут", "error_type", "INTERNAL_ERROR"))
+                    .build();
+        }
     }
 
     @POST
-    public Response create(RouteCreateDto dto) {
-        log.info("CONTROLLER: Received request to create route: {}", dto);
+    @Operation(summary = "Создать новый маршрут", description = "Создает новый маршрут в системе")
+    @ApiResponses({
+        @ApiResponse(responseCode = "201", description = "Маршрут создан успешно"),
+        @ApiResponse(responseCode = "409", description = "Конфликт - маршрут с таким именем уже существует или нулевое расстояние"),
+        @ApiResponse(responseCode = "400", description = "Неверные данные для создания")
+    })
+    public Response create(@Parameter(description = "Данные для создания маршрута") RouteCreateDto dto) {
+        log.info("CONTROLLER: Received request to create route: " + dto);
         
         try {
             RouteDto created = routeService.createRoute(dto);
-            log.info("CONTROLLER: Route created successfully: {}", created.id());
+            log.info("CONTROLLER: Route created successfully: " + created.id());
             Map<String, Object> response = new HashMap<>();
             response.put("route", created);
             return Response.status(Response.Status.CREATED).entity(response).build();
         } catch (RouteNameAlreadyExistsException e) {
-            log.warn("CONTROLLER: Route name already exists: {}", e.getMessage());
-            log.info("CONTROLLER: RouteNameAlreadyExistsException details - conflicting route is null: {}", (e.getConflictingRoute() == null));
-            if (e.getConflictingRoute() != null) {
-                log.info("CONTROLLER: Conflicting route details: ID={}, Name='{}'", e.getConflictingRoute().id(), e.getConflictingRoute().name());
-            } else {
-                log.error("CONTROLLER: ERROR - RouteNameAlreadyExistsException was thrown WITHOUT conflicting route data!");
-            }
-            
+            log.warning("CONTROLLER: Route name already exists: " + e.getMessage());
             Map<String, Object> response = new HashMap<>();
             response.put("error_type", "DUPLICATE_NAME");
+            response.put("error", e.getMessage());
             if (e.getConflictingRoute() != null) {
                 response.put("route", e.getConflictingRoute());
-                log.info("CONTROLLER: Added conflicting route to response: ID={}, Name='{}'",
-                        e.getConflictingRoute().id(), e.getConflictingRoute().name());
-            } else {
-                log.error("CONTROLLER: Response will NOT contain route data because conflicting route is NULL");
             }
             return Response.status(Response.Status.CONFLICT)
                     .entity(response)
                     .build();
         } catch (RouteZeroDistanceException e) {
-            log.warn("CONTROLLER: Zero distance route validation failed: {}", e.getMessage());
+            log.warning("CONTROLLER: Zero distance route validation failed: " + e.getMessage());
             Map<String, Object> response = new HashMap<>();
             response.put("error_type", "ZERO_DISTANCE_ROUTE");
+            response.put("error", e.getMessage());
             response.put("fromX", e.getFromX());
             response.put("fromY", e.getFromY());
             response.put("toX", e.getToX());
@@ -131,169 +169,73 @@ public class RouteResource {
                     .entity(response)
                     .build();
         } catch (ValidationException e) {
-            log.warn("CONTROLLER: Validation error during route creation: {}", e.getMessage());
+            log.warning("CONTROLLER: Validation error during route creation: " + e.getMessage());
             return Response.status(Response.Status.BAD_REQUEST)
-                    .entity(Map.of("error", e.getMessage(), "type", "VALIDATION_ERROR"))
-                    .build();
-        } catch (IllegalArgumentException e) {
-            log.warn("CONTROLLER: Invalid argument during route creation: {}", e.getMessage());
-            return Response.status(Response.Status.BAD_REQUEST)
-                    .entity(Map.of("error", e.getMessage(), "type", "INVALID_ARGUMENT"))
-                    .build();
-        } catch (IllegalStateException e) {
-            log.error("CONTROLLER: Service state error during route creation: {}", e.getMessage(), e);
-            return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
-                    .entity(Map.of("error", "Ошибка состояния при создании маршрута: " + e.getMessage(), "type", "STATE_ERROR"))
+                    .entity(Map.of("error", e.getMessage(), "error_type", "VALIDATION_ERROR"))
                     .build();
         } catch (RuntimeException e) {
-            log.error("CONTROLLER: Runtime error during route creation: {}", e.getMessage(), e);
+            log.severe("CONTROLLER: Runtime error during route creation: " + e.getMessage());
             
             // Проверяем, является ли причина исключения нашим кастомным исключением
             Throwable rootCause = e;
             while (rootCause != null) {
-                log.error("CONTROLLER: Root cause - Type: {}, Message: {}", rootCause.getClass().getName(), rootCause.getMessage());
-                
-                // Проверяем конкретные типы исключений в цепочке причин
                 if (rootCause instanceof RouteNameAlreadyExistsException) {
-                    log.warn("CONTROLLER: Found RouteNameAlreadyExistsException in cause chain: {}", rootCause.getMessage());
                     RouteNameAlreadyExistsException nameEx = (RouteNameAlreadyExistsException) rootCause;
                     Map<String, Object> response = new HashMap<>();
                     response.put("error_type", "DUPLICATE_NAME");
+                    response.put("error", nameEx.getMessage());
                     if (nameEx.getConflictingRoute() != null) {
                         response.put("route", nameEx.getConflictingRoute());
-                        log.info("CONTROLLER: Added conflicting route to RuntimeException response: ID={}, Name='{}'",
-                                nameEx.getConflictingRoute().id(), nameEx.getConflictingRoute().name());
                     }
                     return Response.status(Response.Status.CONFLICT)
                             .entity(response)
                             .build();
                 } else if (rootCause instanceof RouteZeroDistanceException) {
-                    log.warn("CONTROLLER: Found RouteZeroDistanceException in cause chain: {}", rootCause.getMessage());
                     RouteZeroDistanceException zeroEx = (RouteZeroDistanceException) rootCause;
                     Map<String, Object> response = new HashMap<>();
                     response.put("error_type", "ZERO_DISTANCE_ROUTE");
+                    response.put("error", zeroEx.getMessage());
                     response.put("fromX", zeroEx.getFromX());
                     response.put("fromY", zeroEx.getFromY());
                     response.put("toX", zeroEx.getToX());
                     response.put("toY", zeroEx.getToY());
                     return Response.status(Response.Status.CONFLICT)
-                            .entity(Map.of("error", rootCause.getMessage(), "type", "ZERO_DISTANCE_ROUTE"))
+                            .entity(response)
+                            .build();
+                } else if (rootCause instanceof IllegalArgumentException) {
+                    // ДОБАВЛЕНО: Обработка IllegalArgumentException в RuntimeException для создания
+                    IllegalArgumentException argEx = (IllegalArgumentException) rootCause;
+                    log.warning("CONTROLLER: IllegalArgumentException wrapped in RuntimeException during creation: " + argEx.getMessage());
+                    return Response.status(Response.Status.BAD_REQUEST)
+                            .entity(Map.of("error", argEx.getMessage(), "error_type", "INVALID_ARGUMENT"))
                             .build();
                 }
-                
                 rootCause = rootCause.getCause();
             }
             
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
-                    .entity(Map.of("error", "Ошибка выполнения при создании маршрута: " + e.getMessage(), "type", "RUNTIME_ERROR"))
+                    .entity(Map.of("error", "Ошибка выполнения при создании маршрута: " + e.getMessage(), "error_type", "RUNTIME_ERROR"))
                     .build();
         } catch (Exception e) {
-            log.error("CONTROLLER: Unexpected error - Type: {}, Message: {}, Cause: {}",
-                    e.getClass().getName(), e.getMessage(), e.getCause() != null ? e.getCause().getClass().getName() : "null", e);
-            
+            log.severe("CONTROLLER: Unexpected error during route creation: " + e.getMessage());
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
-                    .entity(Map.of("error", "Не удалось сохранить маршрут. Попробуйте еще раз.", "type", "INTERNAL_ERROR"))
+                    .entity(Map.of("error", "Не удалось сохранить маршрут. Попробуйте еще раз.", "error_type", "INTERNAL_ERROR"))
                     .build();
-        }
-    }
-
-    @GET
-    @Path("/test-validation")
-    public Response testValidation() {
-        log.info("TEST ENDPOINT CALLED");
-        return Response.ok(Map.of(
-            "message", "НОВЫЙ КОД РАБОТАЕТ! Валидация должна функционировать.",
-            "timestamp", System.currentTimeMillis(),
-            "version", "v2-with-validation"
-        )).build();
-    }
-    
-    @POST
-    @Path("/test-coordinates-validation")
-    public Response testCoordinatesValidation(@QueryParam("x") Float x, @QueryParam("y") Double y) {
-        log.info("TEST COORDINATES VALIDATION: Testing coordinates ({}, {})", x, y);
-        
-        try {
-            log.info("Creating test route with coordinates ({}, {})", x, y);
-            
-            RouteCreateDto testDto = new RouteCreateDto(
-                "TEST_COORDINATES_" + System.currentTimeMillis(), // уникальное имя
-                new org.example.domain.coordinates.dto.CoordinatesDto(null, x, y, null, null),
-                new org.example.domain.location.dto.LocationDto(null, 1.0, 1.0, "Test From", null, null),
-                new org.example.domain.location.dto.LocationDto(null, 2.0, 2.0, "Test To", null, null),
-                100L,
-                5L
-            );
-            
-            RouteDto created = routeService.createRoute(testDto);
-            log.info("TEST: Route created successfully with coordinates ({}, {}) - Route ID: {}", x, y, created.id());
-            
-            return Response.ok(Map.of(
-                "result", "SUCCESS",
-                "message", "Координаты (" + x + ", " + y + ") уникальны - маршрут создан",
-                "routeId", created.id(),
-                "coordinates", "(" + x + ", " + y + ")"
-            )).build();
-            
-        } catch (Exception e) {
-            log.error("TEST: Unexpected error during coordinates test: {}", e.getMessage(), e);
-            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity(Map.of(
-                "result", "ERROR",
-                "message", "Ошибка при тестировании координат: " + e.getMessage(),
-                "error_type", e.getClass().getSimpleName(),
-                "coordinates", "(" + x + ", " + y + ")"
-            )).build();
-        }
-    }
-    
-    @POST
-    @Path("/test-zero-distance")
-    public Response testZeroDistanceRoute(@QueryParam("x") Double x, @QueryParam("y") Double y) {
-        log.info("TEST ZERO DISTANCE: Testing route with same start and end points ({}, {})", x, y);
-        
-        try {
-            RouteCreateDto testDto = new RouteCreateDto(
-                "TEST_ZERO_DISTANCE_" + System.currentTimeMillis(), // уникальное имя
-                new org.example.domain.coordinates.dto.CoordinatesDto(null, x.floatValue(), y, null, null),
-                new org.example.domain.location.dto.LocationDto(null, x, y, "Same Location", null, null), // ОДИНАКОВЫЕ ТОЧКИ
-                new org.example.domain.location.dto.LocationDto(null, x, y, "Same Location", null, null), // ОДИНАКОВЫЕ ТОЧКИ
-                100L,
-                5L
-            );
-            
-            RouteDto created = routeService.createRoute(testDto);
-            log.error("TEST: UNEXPECTED - Zero distance route was created! Route ID: {}", created.id());
-            
-            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity(Map.of(
-                "result", "ERROR",
-                "message", "ОШИБКА: Маршрут с нулевым расстоянием был создан! Валидация не работает",
-                "routeId", created.id(),
-                "coordinates", "(" + x + ", " + y + ")"
-            )).build();
-            
-        } catch (RouteZeroDistanceException e) {
-            log.info("TEST: Zero distance validation works correctly: {}", e.getMessage());
-            return Response.status(Response.Status.CONFLICT).entity(Map.of(
-                "result", "ZERO_DISTANCE_BLOCKED",
-                "message", e.getMessage(),
-                "coordinates", "(" + x + ", " + y + ")"
-            )).build();
-            
-        } catch (Exception e) {
-            log.error("TEST: Unexpected error during zero distance test: {}", e.getMessage(), e);
-            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity(Map.of(
-                "result", "ERROR",
-                "message", "Ошибка при тестировании zero distance: " + e.getMessage(),
-                "error_type", e.getClass().getSimpleName(),
-                "coordinates", "(" + x + ", " + y + ")"
-            )).build();
         }
     }
 
     @PUT
     @Path("/{id}")
-    public Response update(@PathParam("id") Integer id, RouteUpdateDto dto) {
-        log.info("Received request to update route {}: {}", id, dto);
+    @Operation(summary = "Обновить маршрут", description = "Обновляет существующий маршрут")
+    @ApiResponses({
+        @ApiResponse(responseCode = "200", description = "Маршрут обновлен успешно"),
+        @ApiResponse(responseCode = "404", description = "Маршрут не найден"),
+        @ApiResponse(responseCode = "409", description = "Конфликт при обновлении")
+    })
+    public Response update(
+            @Parameter(description = "ID маршрута") @PathParam("id") Integer id,
+            @Parameter(description = "Данные для обновления") RouteUpdateDto dto) {
+        log.info("Received request to update route " + id + ": " + dto);
         if (!dto.id().equals(id)) {
             return Response.status(Response.Status.BAD_REQUEST)
                     .entity(Map.of("error", "ID в URL и в теле запроса не совпадают"))
@@ -302,26 +244,26 @@ public class RouteResource {
         
         try {
             RouteDto updated = routeService.updateRoute(dto);
-            log.info("Route updated successfully: {}", updated.id());
+            log.info("Route updated successfully: " + updated.id());
             Map<String, Object> response = new HashMap<>();
             response.put("route", updated);
             return Response.ok(response).build();
         } catch (RouteNameAlreadyExistsException e) {
-            log.warn("Route name already exists on update: {}", e.getMessage());
+            log.warning("Route name already exists on update: " + e.getMessage());
             Map<String, Object> response = new HashMap<>();
             response.put("error_type", "DUPLICATE_NAME");
+            response.put("error", e.getMessage());
             if (e.getConflictingRoute() != null) {
                 response.put("route", e.getConflictingRoute());
-                log.info("CONTROLLER: Added conflicting route to update response: ID={}, Name='{}'",
-                        e.getConflictingRoute().id(), e.getConflictingRoute().name());
             }
             return Response.status(Response.Status.CONFLICT)
                     .entity(response)
                     .build();
         } catch (RouteZeroDistanceException e) {
-            log.warn("Zero distance route validation failed on update: {}", e.getMessage());
+            log.warning("Zero distance route validation failed on update: " + e.getMessage());
             Map<String, Object> response = new HashMap<>();
             response.put("error_type", "ZERO_DISTANCE_ROUTE");
+            response.put("error", e.getMessage());
             response.put("fromX", e.getFromX());
             response.put("fromY", e.getFromY());
             response.put("toX", e.getToX());
@@ -330,48 +272,153 @@ public class RouteResource {
                     .entity(response)
                     .build();
         } catch (ValidationException e) {
-            log.warn("Validation error during route update: {}", e.getMessage());
+            log.warning("Validation error during route update: " + e.getMessage());
             return Response.status(Response.Status.BAD_REQUEST)
-                    .entity(Map.of("error", e.getMessage(), "type", "VALIDATION_ERROR"))
+                    .entity(Map.of("error", e.getMessage(), "error_type", "VALIDATION_ERROR"))
                     .build();
         } catch (IllegalArgumentException e) {
-            log.warn("Invalid argument during route update: {}", e.getMessage());
+            if (e.getMessage() != null && e.getMessage().toLowerCase().contains("not found")) {
+                log.warning("Route not found during update: " + e.getMessage());
+                return Response.status(Response.Status.NOT_FOUND)
+                        .entity(Map.of("error", e.getMessage(), "error_type", "NOT_FOUND"))
+                        .build();
+            }
+            log.warning("Invalid argument during route update: " + e.getMessage());
             return Response.status(Response.Status.BAD_REQUEST)
-                    .entity(Map.of("error", e.getMessage(), "type", "INVALID_ARGUMENT"))
+                    .entity(Map.of("error", e.getMessage(), "error_type", "INVALID_ARGUMENT"))
+                    .build();
+        } catch (RuntimeException e) {
+            log.severe("CONTROLLER: Runtime error during route update: " + e.getMessage());
+            
+            // Проверяем, является ли причина исключения нашим кастомным исключением
+            Throwable rootCause = e;
+            while (rootCause != null) {
+                if (rootCause instanceof RouteNameAlreadyExistsException) {
+                    RouteNameAlreadyExistsException nameEx = (RouteNameAlreadyExistsException) rootCause;
+                    Map<String, Object> response = new HashMap<>();
+                    response.put("error_type", "DUPLICATE_NAME");
+                    response.put("error", nameEx.getMessage());
+                    if (nameEx.getConflictingRoute() != null) {
+                        response.put("route", nameEx.getConflictingRoute());
+                    }
+                    return Response.status(Response.Status.CONFLICT)
+                            .entity(response)
+                            .build();
+                } else if (rootCause instanceof RouteZeroDistanceException) {
+                    RouteZeroDistanceException zeroEx = (RouteZeroDistanceException) rootCause;
+                    Map<String, Object> response = new HashMap<>();
+                    response.put("error_type", "ZERO_DISTANCE_ROUTE");
+                    response.put("error", zeroEx.getMessage());
+                    response.put("fromX", zeroEx.getFromX());
+                    response.put("fromY", zeroEx.getFromY());
+                    response.put("toX", zeroEx.getToX());
+                    response.put("toY", zeroEx.getToY());
+                    return Response.status(Response.Status.CONFLICT)
+                            .entity(response)
+                            .build();
+                } else if (rootCause instanceof IllegalArgumentException) {
+                    // ДОБАВЛЕНО: Обработка IllegalArgumentException в RuntimeException
+                    IllegalArgumentException argEx = (IllegalArgumentException) rootCause;
+                    log.warning("CONTROLLER: IllegalArgumentException wrapped in RuntimeException: " + argEx.getMessage());
+                    return Response.status(Response.Status.BAD_REQUEST)
+                            .entity(Map.of("error", argEx.getMessage(), "error_type", "INVALID_ARGUMENT"))
+                            .build();
+                }
+                rootCause = rootCause.getCause();
+            }
+            
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+                    .entity(Map.of("error", "Ошибка выполнения при обновлении маршрута: " + e.getMessage(), "error_type", "RUNTIME_ERROR"))
                     .build();
         } catch (Exception e) {
-            log.error("Unexpected error during route update: {}", e.getMessage(), e);
+            log.severe("CONTROLLER: Unexpected error during route update: " + e.getMessage());
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
-                    .entity(Map.of("error", "Не удалось обновить маршрут. Попробуйте еще раз.", "type", "INTERNAL_ERROR"))
+                    .entity(Map.of("error", "Не удалось обновить маршрут. Попробуйте еще раз.", "error_type", "INTERNAL_ERROR"))
                     .build();
         }
     }
 
     @DELETE
     @Path("/{id}")
-    public Response delete(@PathParam("id") Integer id,
-                          @QueryParam("coordinatesTargetRouteId") Integer coordinatesTargetRouteId,
-                          @QueryParam("fromLocationTargetRouteId") Integer fromLocationTargetRouteId,
-                          @QueryParam("toLocationTargetRouteId") Integer toLocationTargetRouteId,
-                          @QueryParam("targetRouteId") Integer targetRouteId) {
-        if (targetRouteId != null) {
-            routeService.deleteWithRebinding(id, targetRouteId, targetRouteId, targetRouteId);
-        } else if (coordinatesTargetRouteId != null || fromLocationTargetRouteId != null || toLocationTargetRouteId != null) {
-            routeService.deleteWithRebinding(id, coordinatesTargetRouteId, fromLocationTargetRouteId, toLocationTargetRouteId);
-        } else {
-            routeService.delete(id);
+    @Operation(summary = "Удалить маршрут", description = "Удаляет маршрут из системы с возможностью перепривязки зависимостей")
+    @ApiResponses({
+        @ApiResponse(responseCode = "204", description = "Маршрут удален успешно"),
+        @ApiResponse(responseCode = "404", description = "Маршрут не найден"),
+        @ApiResponse(responseCode = "400", description = "Некорректные параметры (например, неверный target route ID)")
+    })
+    public Response delete(
+            @Parameter(description = "ID маршрута") @PathParam("id") Integer id,
+            @Parameter(description = "ID маршрута для перепривязки координат") @QueryParam("coordinatesTargetRouteId") Integer coordinatesTargetRouteId,
+            @Parameter(description = "ID маршрута для перепривязки начальной локации") @QueryParam("fromLocationTargetRouteId") Integer fromLocationTargetRouteId,
+            @Parameter(description = "ID маршрута для перепривязки конечной локации") @QueryParam("toLocationTargetRouteId") Integer toLocationTargetRouteId,
+            @Parameter(description = "ID общего целевого маршрута") @QueryParam("targetRouteId") Integer targetRouteId) {
+        log.info("Received request to delete route " + id);
+        
+        try {
+            if (targetRouteId != null) {
+                routeService.deleteWithRebinding(id, targetRouteId, targetRouteId, targetRouteId);
+            } else if (coordinatesTargetRouteId != null || fromLocationTargetRouteId != null || toLocationTargetRouteId != null) {
+                routeService.deleteWithRebinding(id, coordinatesTargetRouteId, fromLocationTargetRouteId, toLocationTargetRouteId);
+            } else {
+                routeService.delete(id);
+            }
+            log.info("Route " + id + " deleted successfully");
+            return Response.noContent().build();
+        } catch (IllegalArgumentException e) {
+            String message = e.getMessage();
+            if (message != null) {
+                // Определяем конкретный тип ошибки по сообщению
+                if (message.toLowerCase().contains("route not found with id: " + id)) {
+                    // Это ошибка именно для удаляемого маршрута
+                    log.info("Route " + id + " not found during deletion");
+                    return Response.status(Response.Status.NOT_FOUND)
+                            .entity(Map.of("error", "Маршрут не найден", "error_type", "NOT_FOUND"))
+                            .build();
+                } else if (message.toLowerCase().contains("target route not found") ||
+                          message.toLowerCase().contains("coordinates target route not found") ||
+                          message.toLowerCase().contains("from location target route not found") ||
+                          message.toLowerCase().contains("to location target route not found")) {
+                    // Это ошибка в target route для rebinding
+                    log.warning("Target route not found during deletion with rebinding: " + message);
+                    return Response.status(Response.Status.BAD_REQUEST)
+                            .entity(Map.of("error", "Указанный целевой маршрут не найден: " + message, "error_type", "TARGET_ROUTE_NOT_FOUND"))
+                            .build();
+                } else {
+                    // Другие типы IllegalArgumentException
+                    log.warning("Invalid argument during route deletion: " + message);
+                    return Response.status(Response.Status.BAD_REQUEST)
+                            .entity(Map.of("error", message, "error_type", "INVALID_ARGUMENT"))
+                            .build();
+                }
+            } else {
+                log.warning("IllegalArgumentException with null message during route deletion");
+                return Response.status(Response.Status.BAD_REQUEST)
+                        .entity(Map.of("error", "Некорректные параметры", "error_type", "INVALID_ARGUMENT"))
+                        .build();
+            }
+        } catch (jakarta.persistence.OptimisticLockException e) {
+            // ИСПРАВЛЕНО: Обработка OptimisticLockException при concurrent deletion
+            log.info("OptimisticLockException during route " + id + " deletion - likely concurrent deletion, treating as success");
+            return Response.noContent().build(); // Маршрут уже удален другой транзакцией
+        } catch (Exception e) {
+            log.severe("Unexpected error during route deletion: " + e.getMessage());
+            e.printStackTrace(); // Для отладки
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+                    .entity(Map.of("error", "Не удалось удалить маршрут", "error_type", "INTERNAL_ERROR"))
+                    .build();
         }
-        return Response.noContent().build();
     }
-    // Эндпоинты для загрузки связанных данных для форм
+
     @GET
     @Path("/related/coordinates")
+    @Operation(summary = "Получить доступные координаты", description = "Возвращает список доступных координат")
+    @ApiResponse(responseCode = "200", description = "Координаты получены успешно")
     public Response getAvailableCoordinates() {
         try {
             List<CoordinatesDto> coordinates = routeService.getAvailableCoordinates();
             return Response.ok(coordinates).build();
         } catch (Exception e) {
-            log.error("Error loading coordinates: {}", e.getMessage(), e);
+            log.severe("Error loading coordinates: " + e.getMessage());
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
                     .entity(Map.of("error", "Failed to load coordinates"))
                     .build();
@@ -380,12 +427,14 @@ public class RouteResource {
     
     @GET
     @Path("/related/locations")
+    @Operation(summary = "Получить доступные локации", description = "Возвращает список доступных локаций")
+    @ApiResponse(responseCode = "200", description = "Локации получены успешно")
     public Response getAvailableLocations() {
         try {
             List<LocationDto> locations = routeService.getAvailableLocations();
             return Response.ok(locations).build();
         } catch (Exception e) {
-            log.error("Error loading locations: {}", e.getMessage(), e);
+            log.severe("Error loading locations: " + e.getMessage());
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
                     .entity(Map.of("error", "Failed to load locations"))
                     .build();
@@ -394,19 +443,30 @@ public class RouteResource {
 
     @GET
     @Path("/{id}/check-dependencies")
-    public Response checkDependencies(@PathParam("id") Integer id) {
+    @Operation(summary = "Проверить зависимости маршрута", description = "Проверяет зависимости указанного маршрута")
+    @ApiResponses({
+        @ApiResponse(responseCode = "200", description = "Зависимости проверены"),
+        @ApiResponse(responseCode = "404", description = "Маршрут не найден")
+    })
+    public Response checkDependencies(@Parameter(description = "ID маршрута") @PathParam("id") Integer id) {
         try {
             Map<String, Object> dependencies = routeService.checkDependencies(id);
             return Response.ok(dependencies).build();
         } catch (IllegalArgumentException e) {
-            log.warn("Route not found for dependency check: {}", e.getMessage());
-            return Response.status(Response.Status.NOT_FOUND)
-                    .entity(Map.of("error", e.getMessage()))
+            if (e.getMessage() != null && e.getMessage().toLowerCase().contains("not found")) {
+                log.warning("Route not found for dependency check: " + e.getMessage());
+                return Response.status(Response.Status.NOT_FOUND)
+                        .entity(Map.of("error", e.getMessage(), "error_type", "NOT_FOUND"))
+                        .build();
+            }
+            log.warning("Invalid argument for dependency check: " + e.getMessage());
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity(Map.of("error", e.getMessage(), "error_type", "INVALID_ARGUMENT"))
                     .build();
         } catch (Exception e) {
-            log.error("Error checking dependencies for route {}: {}", id, e.getMessage(), e);
+            log.severe("Error checking dependencies for route " + id + ": " + e.getMessage());
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
-                    .entity(Map.of("error", "Не удалось проверить зависимости маршрута"))
+                    .entity(Map.of("error", "Не удалось проверить зависимости маршрута", "error_type", "INTERNAL_ERROR"))
                     .build();
         }
     }

@@ -17,3 +17,5 @@ databaseChangeLog:
       file: db/changelogs/008-fix-routes-fk-constraints.yaml
   - include:
       file: db/changelogs/009-add-import-operations.yaml
+  - include:
+      file: db/changelogs/010-add-version-fields.yaml

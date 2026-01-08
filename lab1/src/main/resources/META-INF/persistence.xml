@@ -5,17 +5,36 @@
              version="3.0">
     <persistence-unit name="RoutesPU" transaction-type="JTA">
         <jta-data-source>java:/jdbc/RoutesDS</jta-data-source>
-
+        
         <class>org.example.domain.route.entity.Route</class>
         <class>org.example.domain.coordinates.entity.Coordinates</class>
         <class>org.example.domain.location.entity.Location</class>
         <class>org.example.domain.import_history.entity.ImportOperation</class>
 
         <properties>
+            <!-- Hibernate properties -->
             <property name="hibernate.dialect" value="org.hibernate.dialect.PostgreSQLDialect"/>
             <property name="hibernate.show_sql" value="true"/>
             <property name="hibernate.format_sql" value="true"/>
             <property name="jakarta.persistence.schema-generation.database.action" value="none"/>
+            
+            <!-- JTA настройки для WildFly - автодетект -->
+            <property name="hibernate.jta.track_by_thread" value="true"/>
+            
+            <!-- Настройки для повышения надежности при конкурентном доступе -->
+            <property name="jakarta.persistence.lock.timeout" value="10000"/> <!-- 10 секунд -->
+            <property name="hibernate.jdbc.batch_size" value="0"/> <!-- Отключаем batching для consistency -->
+            <property name="hibernate.order_inserts" value="true"/>
+            <property name="hibernate.order_updates" value="true"/>
+            <property name="hibernate.jdbc.batch_versioned_data" value="false"/>
+            
+            <!-- Optimistic locking settings -->
+            <property name="hibernate.connection.isolation" value="2"/> <!-- READ_COMMITTED -->
+            <property name="hibernate.enable_lazy_load_no_trans" value="false"/>
+            
+            <!-- WildFly specific settings -->
+            <property name="hibernate.validator.apply_to_ddl" value="false"/>
+            <property name="hibernate.validator.autoregister_listeners" value="false"/>
         </properties>
     </persistence-unit>
 </persistence>
