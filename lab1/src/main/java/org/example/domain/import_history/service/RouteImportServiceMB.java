@@ -87,20 +87,8 @@ public class RouteImportServiceMB {
                 }
             }
             
-            // Подсчитываем количество ошибок связанных с дубликатами
-            int duplicateCount = 0;
-            int validationErrorCount = 0;
-            
-            for (String error : errors) {
-                if (error.contains("already exists")) {
-                    duplicateCount++;
-                } else {
-                    validationErrorCount++;
-                }
-            }
-            
-            // Если есть критические ошибки валидации (не дубликаты), прекращаем импорт
-            if (validationErrorCount > 0) {
+            // Если есть критические ошибки валидации, прекращаем импорт
+            if (!errors.isEmpty()) {
                 String errorMessage = "Validation failed: " + String.join("; ", errors);
                 importOperationService.failImportOperation(operationId, errorMessage);
                 
@@ -115,27 +103,12 @@ public class RouteImportServiceMB {
                 );
             }
             
-            // Если только дубликаты, но нет новых записей для импорта
-            if (validRoutes.isEmpty() && duplicateCount > 0) {
-                String message = "All " + duplicateCount + " routes already exist in database";
-                importOperationService.completeImportOperation(operationId, 0);
-                
-                return new ImportResultDto(
-                    operationId,
-                    ImportStatus.SUCCESS,
-                    parsedRoutes.size(),
-                    0,
-                    duplicateCount,
-                    errors, // Показываем предупреждения о дубликатах
-                    message
-                );
-            }
-            
-            // Проверка уникальности имен маршрутов в рамках импорта
+            // Проверка уникальности имен маршрутов внутри файла импорта
             Set<String> uniqueNames = new HashSet<>();
             for (RouteImportData routeData : validRoutes) {
-                if (!uniqueNames.add(routeData.name().toLowerCase())) {
-                    errors.add("Duplicate route name in import file: " + routeData.name());
+                String routeName = routeData.name().trim();
+                if (!uniqueNames.add(routeName)) {
+                    errors.add("Duplicate route name in import file: " + routeName);
                 }
             }
             
@@ -154,34 +127,20 @@ public class RouteImportServiceMB {
                 );
             }
             
-            // Импорт валидных записей в одной транзакции
-            int successfulCount = importValidRoutes(validRoutes);
+            // Импорт валидных записей - обработка дубликатов будет внутри
+            ImportValidationResult result = importValidRoutesWithDuplicateHandling(validRoutes);
             
             // Завершение операции импорта
-            importOperationService.completeImportOperation(operationId, successfulCount);
-            
-            String message;
-            if (duplicateCount > 0 && successfulCount > 0) {
-                message = String.format("Import completed: %d routes imported, %d routes skipped (already exist)",
-                                      successfulCount, duplicateCount);
-                log.info("Import completed with mixed results. {} routes imported, {} duplicates skipped",
-                        successfulCount, duplicateCount);
-            } else if (duplicateCount > 0) {
-                message = String.format("No new routes imported: all %d routes already exist", duplicateCount);
-                log.info("Import completed but no new routes added. {} duplicates found", duplicateCount);
-            } else {
-                message = "Import completed successfully";
-                log.info("Import completed successfully. {} routes imported", successfulCount);
-            }
+            importOperationService.completeImportOperation(operationId, result.successCount());
             
             return new ImportResultDto(
                 operationId,
                 ImportStatus.SUCCESS,
                 parsedRoutes.size(),
-                successfulCount,
-                duplicateCount,
-                duplicateCount > 0 ? errors : Collections.emptyList(), // Показываем предупреждения о дубликатах
-                message
+                result.successCount(),
+                result.duplicateCount(),
+                result.duplicateErrors(),
+                result.message()
             );
             
         } catch (Exception e) {
@@ -356,18 +315,11 @@ public class RouteImportServiceMB {
         List<String> errors = new ArrayList<>();
         String linePrefix = "Line " + lineNumber + ": ";
         
-        // Проверка уникальности имени маршрута в базе данных
-        List<Route> existingRoutes = em.createQuery(
-            "SELECT r FROM Route r WHERE LOWER(r.name) = LOWER(:name)", Route.class)
-            .setParameter("name", routeData.name().trim())
-            .getResultList();
-        
-        if (!existingRoutes.isEmpty()) {
-            errors.add(linePrefix + "Route with name '" + routeData.name() + "' already exists");
-        }
+        // УБРАНО: Проверка уникальности имени маршрута - теперь делается только в RouteServiceMB.createRoute()
+        // Это устраняет race conditions между двумя проверками
         
         // Дополнительная валидация: from и to локации не должны быть одинаковыми
-        if (Objects.equals(routeData.fromX(), routeData.toX()) && 
+        if (Objects.equals(routeData.fromX(), routeData.toX()) &&
             Objects.equals(routeData.fromY(), routeData.toY()) &&
             Objects.equals(routeData.fromName(), routeData.toName())) {
             errors.add(linePrefix + "From and To locations cannot be identical");
@@ -377,19 +329,21 @@ public class RouteImportServiceMB {
     }
     
     /**
-     * Импорт валидных маршрутов в одной транзакции
+     * Импорт валидных маршрутов с правильной обработкой дубликатов
      */
-    private int importValidRoutes(List<RouteImportData> validRoutes) {
+    private ImportValidationResult importValidRoutesWithDuplicateHandling(List<RouteImportData> validRoutes) {
         int successCount = 0;
+        int duplicateCount = 0;
+        List<String> duplicateErrors = new ArrayList<>();
         
         for (RouteImportData routeData : validRoutes) {
             try {
                 // Создание DTO для координат
                 CoordinatesDto coordinatesDto = new CoordinatesDto(
-                    null, 
-                    routeData.coordinatesX(), 
+                    null,
+                    routeData.coordinatesX(),
                     routeData.coordinatesY(),
-                    null, 
+                    null,
                     null
                 );
                 
@@ -423,21 +377,50 @@ public class RouteImportServiceMB {
                     routeData.rating()
                 );
                 
-                // Создание маршрута через сервис
+                // Создание маршрута через сервис - теперь обрабатываем дубликаты
                 routeService.createRoute(routeCreateDto);
                 successCount++;
-                
                 log.debug("Successfully imported route: {}", routeData.name());
                 
+            } catch (org.example.exception.RouteNameAlreadyExistsException e) {
+                // Это нормально - маршрут уже существует
+                duplicateCount++;
+                duplicateErrors.add("Route '" + routeData.name() + "' already exists - skipped");
+                log.info("Skipped duplicate route: {}", routeData.name());
             } catch (Exception e) {
                 log.error("Failed to import route: {} - {}", routeData.name(), e.getMessage());
-                // При любой ошибке выбрасываем исключение для отката транзакции
+                // При других ошибках выбрасываем исключение для отката транзакции
                 throw new RuntimeException("Failed to import route '" + routeData.name() + "': " + e.getMessage());
             }
         }
         
-        return successCount;
+        // Формируем сообщение о результатах
+        String message;
+        if (duplicateCount > 0 && successCount > 0) {
+            message = String.format("Import completed: %d routes imported, %d routes skipped (already exist)",
+                                  successCount, duplicateCount);
+            log.info("Import completed with mixed results. {} routes imported, {} duplicates skipped",
+                    successCount, duplicateCount);
+        } else if (duplicateCount > 0 && successCount == 0) {
+            message = String.format("No new routes imported: all %d routes already exist", duplicateCount);
+            log.info("Import completed but no new routes added. {} duplicates found", duplicateCount);
+        } else {
+            message = "Import completed successfully";
+            log.info("Import completed successfully. {} routes imported", successCount);
+        }
+        
+        return new ImportValidationResult(successCount, duplicateCount, duplicateErrors, message);
     }
+    
+    /**
+     * Результат валидации импорта
+     */
+    private record ImportValidationResult(
+        int successCount,
+        int duplicateCount,
+        List<String> duplicateErrors,
+        String message
+    ) {}
     
     /**
      * Внутренний класс для хранения данных импорта

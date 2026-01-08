@@ -313,18 +313,11 @@ public class RouteImportService {
         List<String> errors = new ArrayList<>();
         String linePrefix = "Line " + lineNumber + ": ";
         
-        // Проверка уникальности имени маршрута в базе данных
-        List<Route> existingRoutes = em.createQuery(
-            "SELECT r FROM Route r WHERE LOWER(r.name) = LOWER(:name)", Route.class)
-            .setParameter("name", routeData.name().trim())
-            .getResultList();
-        
-        if (!existingRoutes.isEmpty()) {
-            errors.add(linePrefix + "Route with name '" + routeData.name() + "' already exists");
-        }
+        // УБРАНО: Проверка уникальности имени маршрута - теперь делается только в RouteServiceMB.createRoute()
+        // Это устраняет race conditions между двумя проверками
         
         // Дополнительная валидация: from и to локации не должны быть одинаковыми
-        if (Objects.equals(routeData.fromX(), routeData.toX()) && 
+        if (Objects.equals(routeData.fromX(), routeData.toX()) &&
             Objects.equals(routeData.fromY(), routeData.toY()) &&
             Objects.equals(routeData.fromName(), routeData.toName())) {
             errors.add(linePrefix + "From and To locations cannot be identical");
@@ -334,19 +327,20 @@ public class RouteImportService {
     }
     
     /**
-     * Импорт валидных маршрутов в одной транзакции
+     * Импорт валидных маршрутов с правильной обработкой дубликатов
      */
     private int importValidRoutes(List<RouteImportData> validRoutes) {
         int successCount = 0;
+        int skippedCount = 0;
         
         for (RouteImportData routeData : validRoutes) {
             try {
                 // Создание DTO для координат
                 CoordinatesDto coordinatesDto = new CoordinatesDto(
-                    null, 
-                    routeData.coordinatesX(), 
+                    null,
+                    routeData.coordinatesX(),
                     routeData.coordinatesY(),
-                    null, 
+                    null,
                     null
                 );
                 
@@ -380,17 +374,26 @@ public class RouteImportService {
                     routeData.rating()
                 );
                 
-                // Создание маршрута через сервис
+                // Создание маршрута через сервис - теперь обрабатываем дубликаты
                 routeService.createRoute(routeCreateDto);
                 successCount++;
-                
                 log.debug("Successfully imported route: {}", routeData.name());
                 
+            } catch (org.example.exception.RouteNameAlreadyExistsException e) {
+                // Это нормально - маршрут уже существует, пропускаем
+                skippedCount++;
+                log.info("Skipped duplicate route: {}", routeData.name());
             } catch (Exception e) {
                 log.error("Failed to import route: {} - {}", routeData.name(), e.getMessage());
-                // При любой ошибке выбрасываем исключение для отката транзакции
+                // При других ошибках выбрасываем исключение для отката транзакции
                 throw new RuntimeException("Failed to import route '" + routeData.name() + "': " + e.getMessage());
             }
+        }
+        
+        if (skippedCount > 0) {
+            log.info("Import completed with {} routes imported and {} duplicates skipped", successCount, skippedCount);
+        } else {
+            log.info("Import completed successfully. {} routes imported", successCount);
         }
         
         return successCount;

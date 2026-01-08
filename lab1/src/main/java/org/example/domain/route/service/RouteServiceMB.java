@@ -60,19 +60,8 @@ public class RouteServiceMB {
     // Методы валидации уникальности
     
     /**
-     * Нормализует название маршрута для проверки уникальности
-     */
-    private String normalizeRouteName(String name) {
-        if (name == null) {
-            return null;
-        }
-        // Убираем лишние пробелы, приводим к нижнему регистру для проверки уникальности
-        return name.trim().toLowerCase().replaceAll("\\s+", " ");
-    }
-    
-    /**
      * Проверяет уникальность имени маршрута при создании (в рамках транзакции)
-     * Использует нормализованное сравнение имен для предотвращения дубликатов
+     * Использует точное сравнение имен для предотвращения дубликатов
      * Применяет полную блокировку таблицы для предотвращения race conditions
      */
     private void validateRouteNameUniquenessInTransaction(String name) {
@@ -82,8 +71,8 @@ public class RouteServiceMB {
             return; // пустые имена не проверяем
         }
         
-        String normalizedName = normalizeRouteName(name);
-        log.info("VALIDATION: Normalized name for uniqueness check: '{}'", normalizedName);
+        String trimmedName = name.trim();
+        log.info("VALIDATION: Checking exact name match for: '{}'", trimmedName);
         
         // Блокируем ВСЕ записи в таблице Route для предотвращения race condition
         log.info("VALIDATION: Applying table-level pessimistic lock for route uniqueness check");
@@ -91,23 +80,20 @@ public class RouteServiceMB {
             .setLockMode(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)
             .getResultList();
         
-        // Проверяем нормализованные имена на Java-стороне для точного сравнения
+        // Проверяем точное совпадение имен на Java-стороне
         for (Route candidate : allRoutes) {
-            if (candidate.getName() != null) {
-                String candidateNormalizedName = normalizeRouteName(candidate.getName());
-                if (normalizedName.equals(candidateNormalizedName)) {
-                    log.error("VALIDATION: Route with normalized name '{}' already exists with ID: {} (original name: '{}')",
-                             normalizedName, candidate.getId(), candidate.getName());
-                    RouteDto conflictingRouteDto = RouteMapper.toDto(candidate);
-                    log.info("SERVICE: Created conflicting RouteDto: {}", conflictingRouteDto);
-                    log.info("SERVICE: RouteDto details - ID: {}, Name: '{}'",
-                            conflictingRouteDto.id(),
-                            conflictingRouteDto.name());
-                    throw new RouteNameAlreadyExistsException(name.trim(), conflictingRouteDto);
-                }
+            if (candidate.getName() != null && trimmedName.equals(candidate.getName().trim())) {
+                log.error("VALIDATION: Route with exact name '{}' already exists with ID: {}",
+                         trimmedName, candidate.getId());
+                RouteDto conflictingRouteDto = RouteMapper.toDto(candidate);
+                log.info("SERVICE: Created conflicting RouteDto: {}", conflictingRouteDto);
+                log.info("SERVICE: RouteDto details - ID: {}, Name: '{}'",
+                        conflictingRouteDto.id(),
+                        conflictingRouteDto.name());
+                throw new RouteNameAlreadyExistsException(trimmedName, conflictingRouteDto);
             }
         }
-        log.info("VALIDATION: Normalized route name '{}' is unique in transaction", normalizedName);
+        log.info("VALIDATION: Route name '{}' is unique in transaction", trimmedName);
     }
     
     /**
@@ -117,7 +103,7 @@ public class RouteServiceMB {
      */
     /**
      * Проверяет уникальность имени маршрута при обновлении с использованием блокировок
-     * Использует те же принципы что и валидация при создании для предотвращения race conditions
+     * Использует точное сравнение имен для предотвращения дубликатов
      */
     private void validateRouteNameUniquenessForUpdate(String name, Integer excludeRouteId) {
         log.info("UPDATE VALIDATION: Checking route name uniqueness for update: '{}', excluding route ID: {}", name, excludeRouteId);
@@ -126,8 +112,8 @@ public class RouteServiceMB {
             return; // пустые имена не проверяем
         }
         
-        String normalizedName = normalizeRouteName(name);
-        log.info("UPDATE VALIDATION: Normalized name for uniqueness check: '{}'", normalizedName);
+        String trimmedName = name.trim();
+        log.info("UPDATE VALIDATION: Checking exact name match for: '{}'", trimmedName);
         
         // Блокируем ВСЕ записи в таблице Route для предотвращения race condition
         log.info("UPDATE VALIDATION: Applying table-level pessimistic lock for route uniqueness check during update");
@@ -135,25 +121,22 @@ public class RouteServiceMB {
             .setLockMode(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)
             .getResultList();
         
-        // Проверяем нормализованные имена на Java-стороне для точного сравнения
+        // Проверяем точное совпадение имен на Java-стороне
         for (Route candidate : allRoutes) {
             // Исключаем обновляемый маршрут
             if (candidate.getId().equals(excludeRouteId)) {
                 continue;
             }
             
-            if (candidate.getName() != null) {
-                String candidateNormalizedName = normalizeRouteName(candidate.getName());
-                if (normalizedName.equals(candidateNormalizedName)) {
-                    log.error("UPDATE VALIDATION: Route with normalized name '{}' already exists with ID: {} (original name: '{}'), excluding: {}",
-                             normalizedName, candidate.getId(), candidate.getName(), excludeRouteId);
-                    RouteDto conflictingRouteDto = RouteMapper.toDto(candidate);
-                    log.info("UPDATE SERVICE: Created conflicting RouteDto: {}", conflictingRouteDto);
-                    throw new RouteNameAlreadyExistsException(name.trim(), conflictingRouteDto);
-                }
+            if (candidate.getName() != null && trimmedName.equals(candidate.getName().trim())) {
+                log.error("UPDATE VALIDATION: Route with exact name '{}' already exists with ID: {}, excluding: {}",
+                         trimmedName, candidate.getId(), excludeRouteId);
+                RouteDto conflictingRouteDto = RouteMapper.toDto(candidate);
+                log.info("UPDATE SERVICE: Created conflicting RouteDto: {}", conflictingRouteDto);
+                throw new RouteNameAlreadyExistsException(trimmedName, conflictingRouteDto);
             }
         }
-        log.info("UPDATE VALIDATION: Normalized route name '{}' is unique for update", normalizedName);
+        log.info("UPDATE VALIDATION: Route name '{}' is unique for update", trimmedName);
     }
     
     
