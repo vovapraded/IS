@@ -56,88 +56,6 @@ public class RouteServiceMB {
 
     @PersistenceContext(unitName = "RoutesPU")
     private EntityManager em;
-
-    // Методы валидации уникальности
-    
-    /**
-     * Проверяет уникальность имени маршрута при создании (в рамках транзакции)
-     * Использует точное сравнение имен для предотвращения дубликатов
-     * Применяет полную блокировку таблицы для предотвращения race conditions
-     */
-    private void validateRouteNameUniquenessInTransaction(String name) {
-        log.info("VALIDATION: Checking route name uniqueness in transaction for: '{}'", name);
-        if (name == null || name.trim().isEmpty()) {
-            log.info("VALIDATION: Name is empty, skipping uniqueness check");
-            return; // пустые имена не проверяем
-        }
-        
-        String trimmedName = name.trim();
-        log.info("VALIDATION: Checking exact name match for: '{}'", trimmedName);
-        
-        // Блокируем ВСЕ записи в таблице Route для предотвращения race condition
-        log.info("VALIDATION: Applying table-level pessimistic lock for route uniqueness check");
-        List<Route> allRoutes = em.createQuery("SELECT r FROM Route r", Route.class)
-            .setLockMode(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)
-            .getResultList();
-        
-        // Проверяем точное совпадение имен на Java-стороне
-        for (Route candidate : allRoutes) {
-            if (candidate.getName() != null && trimmedName.equals(candidate.getName().trim())) {
-                log.error("VALIDATION: Route with exact name '{}' already exists with ID: {}",
-                         trimmedName, candidate.getId());
-                RouteDto conflictingRouteDto = RouteMapper.toDto(candidate);
-                log.info("SERVICE: Created conflicting RouteDto: {}", conflictingRouteDto);
-                log.info("SERVICE: RouteDto details - ID: {}, Name: '{}'",
-                        conflictingRouteDto.id(),
-                        conflictingRouteDto.name());
-                throw new RouteNameAlreadyExistsException(trimmedName, conflictingRouteDto);
-            }
-        }
-        log.info("VALIDATION: Route name '{}' is unique in transaction", trimmedName);
-    }
-    
-    /**
-     * Проверяет уникальность имени маршрута при обновлении
-     * Использует нормализованное сравнение имен для предотвращения дубликатов
-     * Применяет полную блокировку таблицы для предотвращения race conditions
-     */
-    /**
-     * Проверяет уникальность имени маршрута при обновлении с использованием блокировок
-     * Использует точное сравнение имен для предотвращения дубликатов
-     */
-    private void validateRouteNameUniquenessForUpdate(String name, Integer excludeRouteId) {
-        log.info("UPDATE VALIDATION: Checking route name uniqueness for update: '{}', excluding route ID: {}", name, excludeRouteId);
-        if (name == null || name.trim().isEmpty()) {
-            log.info("UPDATE VALIDATION: Name is empty, skipping uniqueness check");
-            return; // пустые имена не проверяем
-        }
-        
-        String trimmedName = name.trim();
-        log.info("UPDATE VALIDATION: Checking exact name match for: '{}'", trimmedName);
-        
-        // Блокируем ВСЕ записи в таблице Route для предотвращения race condition
-        log.info("UPDATE VALIDATION: Applying table-level pessimistic lock for route uniqueness check during update");
-        List<Route> allRoutes = em.createQuery("SELECT r FROM Route r", Route.class)
-            .setLockMode(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)
-            .getResultList();
-        
-        // Проверяем точное совпадение имен на Java-стороне
-        for (Route candidate : allRoutes) {
-            // Исключаем обновляемый маршрут
-            if (candidate.getId().equals(excludeRouteId)) {
-                continue;
-            }
-            
-            if (candidate.getName() != null && trimmedName.equals(candidate.getName().trim())) {
-                log.error("UPDATE VALIDATION: Route with exact name '{}' already exists with ID: {}, excluding: {}",
-                         trimmedName, candidate.getId(), excludeRouteId);
-                RouteDto conflictingRouteDto = RouteMapper.toDto(candidate);
-                log.info("UPDATE SERVICE: Created conflicting RouteDto: {}", conflictingRouteDto);
-                throw new RouteNameAlreadyExistsException(trimmedName, conflictingRouteDto);
-            }
-        }
-        log.info("UPDATE VALIDATION: Route name '{}' is unique for update", trimmedName);
-    }
     
     
     /**
@@ -176,6 +94,60 @@ public class RouteServiceMB {
         }
         log.info("ZERO_DISTANCE VALIDATION: Route has different start and end points - validation passed");
     }
+    
+    /**
+     * Проверяет уникальность имени маршрута при создании
+     * Использует оптимистические блокировки вместо singleton EJB
+     */
+    private void validateRouteNameUniquenessForCreate(String name) {
+        log.info("SERVICE: Checking route name uniqueness for create: '{}'", name);
+        if (name == null || name.trim().isEmpty()) {
+            log.info("SERVICE: Name is empty, skipping uniqueness check");
+            return; // пустые имена не проверяем
+        }
+        
+        String trimmedName = name.trim();
+        log.info("SERVICE: Checking exact name match for create: '{}'", trimmedName);
+        
+        // Проверяем существование в БД с точным совпадением
+        Route existing = routeRepository.findByName(trimmedName);
+        if (existing != null) {
+            log.error("SERVICE: Route with exact name '{}' already exists with ID: {}",
+                     trimmedName, existing.getId());
+            RouteDto conflictingRouteDto = RouteMapper.toDto(existing);
+            log.info("SERVICE: Found conflicting RouteDto: {}", conflictingRouteDto);
+            throw new RouteNameAlreadyExistsException(trimmedName, conflictingRouteDto);
+        }
+        
+        log.info("SERVICE: Route name '{}' is unique for create", trimmedName);
+    }
+
+    /**
+     * Проверяет уникальность имени маршрута при обновлении
+     * Использует оптимистические блокировки вместо singleton EJB
+     */
+    private void validateRouteNameUniquenessForUpdate(String name, Integer excludeRouteId) {
+        log.info("SERVICE: Checking route name uniqueness for update: '{}', excluding route ID: {}", name, excludeRouteId);
+        if (name == null || name.trim().isEmpty()) {
+            log.info("SERVICE: Name is empty, skipping uniqueness check");
+            return; // пустые имена не проверяем
+        }
+        
+        String trimmedName = name.trim();
+        log.info("SERVICE: Checking exact name match for update: '{}'", trimmedName);
+        
+        // Проверяем существование в БД исключая обновляемый маршрут
+        Route existing = routeRepository.findByNameExcluding(trimmedName, excludeRouteId);
+        if (existing != null) {
+            log.error("SERVICE: Route with exact name '{}' already exists with ID: {}, excluding: {}",
+                     trimmedName, existing.getId(), excludeRouteId);
+            RouteDto conflictingRouteDto = RouteMapper.toDto(existing);
+            log.info("SERVICE: Found conflicting RouteDto: {}", conflictingRouteDto);
+            throw new RouteNameAlreadyExistsException(trimmedName, conflictingRouteDto);
+        }
+        
+        log.info("SERVICE: Route name '{}' is unique for update", trimmedName);
+    }
 
     @Lock(LockType.WRITE)
     @AccessTimeout(value = 60, unit = TimeUnit.SECONDS)
@@ -183,11 +155,10 @@ public class RouteServiceMB {
         log.info("SERVICE: Starting route creation: {}", dto);
         
         try {
-            // Проверяем уникальность имени маршрута в транзакции
-            log.info("SERVICE: Validating route name uniqueness in transaction: {}", dto.name());
-            validateRouteNameUniquenessInTransaction(dto.name());
+            // Проверяем уникальность имени на уровне бизнес-логики
+            log.info("SERVICE: Validating route name uniqueness: {}", dto.name());
+            validateRouteNameUniquenessForCreate(dto.name());
             log.info("SERVICE: Name validation passed");
-            
             
             // Проверяем, что маршрут не является "нулевым"
             if (dto.from() != null && dto.to() != null) {
@@ -456,9 +427,10 @@ public class RouteServiceMB {
     @AccessTimeout(value = 60, unit = TimeUnit.SECONDS)
     public RouteDto updateRoute(RouteUpdateDto dto) {
         log.info("UPDATE SERVICE: Starting route update for ID: {}", dto.id());
+        
         try {
             log.info("UPDATE SERVICE: Validating route name uniqueness");
-            // Проверяем уникальность имени маршрута при обновлении
+            // Проверяем уникальность имени на уровне бизнес-логики при обновлении
             if (dto.name() != null) {
                 validateRouteNameUniquenessForUpdate(dto.name(), dto.id());
             }
