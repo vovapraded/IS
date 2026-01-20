@@ -18,26 +18,8 @@
             <property name="hibernate.format_sql" value="true"/>
             <property name="jakarta.persistence.schema-generation.database.action" value="none"/>
             
-            <!-- JTA настройки для WildFly - автодетект -->
+            <!-- JTA настройки для WildFly -->
             <property name="hibernate.jta.track_by_thread" value="true"/>
-            
-            <!-- Настройки для повышения надежности при конкурентном доступе -->
-            <property name="jakarta.persistence.lock.timeout" value="10000"/> <!-- 10 секунд -->
-            <property name="hibernate.jdbc.batch_size" value="0"/> <!-- Отключаем batching для consistency -->
-            <property name="hibernate.order_inserts" value="true"/>
-            <property name="hibernate.order_updates" value="true"/>
-            <property name="hibernate.jdbc.batch_versioned_data" value="false"/>
-            
-            <!-- Optimistic locking settings -->
-            <property name="hibernate.connection.isolation" value="2"/> <!-- READ_COMMITTED -->
-            <property name="hibernate.enable_lazy_load_no_trans" value="false"/>
-            
-            <!-- Дополнительные настройки для надежности оптимистических блокировок -->
-            <property name="hibernate.cache.use_second_level_cache" value="false"/> <!-- Избегаем проблем с кешированием версий -->
-            
-            <!-- WildFly specific settings -->
-            <property name="hibernate.validator.apply_to_ddl" value="false"/>
-            <property name="hibernate.validator.autoregister_listeners" value="false"/>
         </properties>
     </persistence-unit>
 </persistence>

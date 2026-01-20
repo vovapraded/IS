@@ -41,6 +41,13 @@ dependencies {
     implementation("io.swagger.core.v3:swagger-annotations-jakarta:$swaggerVersion")
     implementation("io.swagger.core.v3:swagger-models-jakarta:$swaggerVersion")
     implementation("io.swagger.core.v3:swagger-integration-jakarta:$swaggerVersion")
+    
+    // Apache Commons DBCP2 для Connection Pool
+    implementation("org.apache.commons:commons-dbcp2:2.11.0")
+    implementation("org.apache.commons:commons-pool2:2.12.0")
+    
+    // PostgreSQL JDBC драйвер
+    implementation("org.postgresql:postgresql:42.7.3")
 }
 
 
