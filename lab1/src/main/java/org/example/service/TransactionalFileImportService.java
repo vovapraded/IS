@@ -55,7 +55,7 @@ public class TransactionalFileImportService {
     /**
      * Реализация транзакционной операции импорта файла
      */
-    private class FileImportOperation implements TransactionCoordinator.TransactionalOperation<ImportResultDto> {
+    private class FileImportOperation implements TransactionalOperation<ImportResultDto> {
         private final ImportRequestDto request;
         private ImportOperationDto operation;
         private String fileKey;
@@ -65,7 +65,7 @@ public class TransactionalFileImportService {
         }
 
         @Override
-        public ImportResultDto prepare(TransactionCoordinator.TransactionContext context) throws Exception {
+        public ImportResultDto prepare(TransactionContext context) throws Exception {
             log.info("Transaction {}: Preparing file import for {}", context.getTransactionId(), request.filename());
 
             // Шаг 1: Загружаем файл в MinIO
@@ -121,7 +121,7 @@ public class TransactionalFileImportService {
         }
 
         @Override
-        public void commit(TransactionCoordinator.TransactionContext context) throws Exception {
+        public void commit(TransactionContext context) throws Exception {
             log.info("Transaction {}: Committing file import operation", context.getTransactionId());
             // В нашем случае коммит уже произошел в фазе prepare
             // JTA транзакция автоматически закоммитится
@@ -129,7 +129,7 @@ public class TransactionalFileImportService {
         }
 
         @Override
-        public void rollback(TransactionCoordinator.TransactionContext context) {
+        public void rollback(TransactionContext context) {
             log.warn("Transaction {}: Rolling back file import operation", context.getTransactionId());
 
             // Удаляем файл из MinIO

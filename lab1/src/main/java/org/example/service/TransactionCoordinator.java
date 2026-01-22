@@ -7,8 +7,6 @@ import jakarta.persistence.PersistenceContext;
 import jakarta.transaction.Transactional;
 import lombok.extern.slf4j.Slf4j;
 
-import java.util.ArrayList;
-import java.util.List;
 import java.util.UUID;
 
 @Slf4j
@@ -57,64 +55,5 @@ public class TransactionCoordinator {
             
             throw e;
         }
-    }
-
-    /**
-     * Контекст транзакции для отслеживания операций
-     */
-    public static class TransactionContext {
-        private final String transactionId;
-        private final List<String> uploadedFiles;
-        private final List<Runnable> rollbackOperations;
-
-        public TransactionContext(String transactionId) {
-            this.transactionId = transactionId;
-            this.uploadedFiles = new ArrayList<>();
-            this.rollbackOperations = new ArrayList<>();
-        }
-
-        public String getTransactionId() {
-            return transactionId;
-        }
-
-        public void addUploadedFile(String fileKey) {
-            uploadedFiles.add(fileKey);
-        }
-
-        public List<String> getUploadedFiles() {
-            return uploadedFiles;
-        }
-
-        public void addRollbackOperation(Runnable operation) {
-            rollbackOperations.add(operation);
-        }
-
-        public List<Runnable> getRollbackOperations() {
-            return rollbackOperations;
-        }
-    }
-
-    /**
-     * Интерфейс для транзакционных операций
-     */
-    public interface TransactionalOperation<T> {
-        /**
-         * Фаза 1: Подготовка операции
-         * @param context контекст транзакции
-         * @return результат операции
-         */
-        T prepare(TransactionContext context) throws Exception;
-
-        /**
-         * Фаза 2: Подтверждение операции
-         * @param context контекст транзакции
-         */
-        void commit(TransactionContext context) throws Exception;
-
-        /**
-         * Откат операции в случае ошибки
-         * @param context контекст транзакции
-         */
-        void rollback(TransactionContext context);
     }
 }
