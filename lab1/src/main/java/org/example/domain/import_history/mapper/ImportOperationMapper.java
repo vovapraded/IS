@@ -20,7 +20,10 @@ public class ImportOperationMapper {
                 entity.getTotalRecords(),
                 entity.getProcessedRecords(),
                 entity.getSuccessfulRecords(),
-                entity.getErrorMessage()
+                entity.getErrorMessage(),
+                entity.getFileKey(),
+                entity.getFileSize(),
+                entity.getFileContentType()
         );
     }
 
@@ -40,6 +43,9 @@ public class ImportOperationMapper {
                 .processedRecords(dto.processedRecords())
                 .successfulRecords(dto.successfulRecords())
                 .errorMessage(dto.errorMessage())
+                .fileKey(dto.fileKey())
+                .fileSize(dto.fileSize())
+                .fileContentType(dto.fileContentType())
                 .build();
     }
 }

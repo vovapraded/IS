@@ -35,7 +35,8 @@ import {
   Person as PersonIcon,
   CalendarToday as DateIcon,
   Assignment as FileIcon,
-  TrendingUp as StatsIcon
+  TrendingUp as StatsIcon,
+  Download as DownloadIcon
 } from '@mui/icons-material';
 import api from '../api';
 
@@ -120,6 +121,28 @@ function ImportHistory() {
     } catch (err) {
       console.error('Error loading operation details:', err);
       setError('Не удалось загрузить детали операции');
+    }
+  };
+
+  // Скачивание файла операции импорта
+  const downloadFile = async (operationId, filename) => {
+    try {
+      const response = await api.get(`/import/operations/${operationId}/download`, {
+        responseType: 'blob'
+      });
+      
+      // Создаем ссылку для скачивания
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', filename || `import_${operationId}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('Error downloading file:', err);
+      setError('Не удалось скачать файл');
     }
   };
 
@@ -327,6 +350,7 @@ function ImportHistory() {
                       <TableCell>Время начала</TableCell>
                       <TableCell>Длительность</TableCell>
                       <TableCell>Записей добавлено</TableCell>
+                      <TableCell>Скачать файл</TableCell>
                       <TableCell>Действия</TableCell>
                     </TableRow>
                   </TableHead>
@@ -368,6 +392,22 @@ function ImportHistory() {
                             ? operation.successfulRecords
                             : '-'
                           }
+                        </TableCell>
+                        <TableCell>
+                          {operation.fileKey ? (
+                            <Button
+                              size="small"
+                              startIcon={<DownloadIcon />}
+                              onClick={() => downloadFile(operation.id, operation.filename)}
+                              variant="outlined"
+                            >
+                              Скачать
+                            </Button>
+                          ) : (
+                            <Typography variant="caption" color="text.secondary">
+                              Недоступно
+                            </Typography>
+                          )}
                         </TableCell>
                         <TableCell>
                           <Button
@@ -427,7 +467,35 @@ function ImportHistory() {
                 </ListItem>
                 <ListItem>
                   <ListItemIcon><FileIcon /></ListItemIcon>
-                  <ListItemText primary="Файл" secondary={selectedOperation.filename} />
+                  <ListItemText
+                    primary="Файл"
+                    secondary={
+                      <Box>
+                        <Typography variant="body2" component="div">
+                          {selectedOperation.filename}
+                        </Typography>
+                        {selectedOperation.fileKey && (
+                          <>
+                            <Typography variant="caption" color="text.secondary" component="div">
+                              Размер: {selectedOperation.fileSize ? `${Math.round(selectedOperation.fileSize / 1024)} КБ` : 'Неизвестно'}
+                            </Typography>
+                            <Typography variant="caption" color="text.secondary" component="div">
+                              Тип: {selectedOperation.fileContentType || 'Неизвестно'}
+                            </Typography>
+                            <Button
+                              size="small"
+                              startIcon={<DownloadIcon />}
+                              onClick={() => downloadFile(selectedOperation.id, selectedOperation.filename)}
+                              sx={{ mt: 1 }}
+                              variant="outlined"
+                            >
+                              Скачать файл
+                            </Button>
+                          </>
+                        )}
+                      </Box>
+                    }
+                  />
                 </ListItem>
                 <ListItem>
                   <ListItemIcon>{getStatusIcon(selectedOperation.status)}</ListItemIcon>

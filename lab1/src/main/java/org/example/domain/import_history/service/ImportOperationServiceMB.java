@@ -66,6 +66,48 @@ public class ImportOperationServiceMB {
     }
 
     /**
+     * Создает новую операцию импорта с информацией о файле
+     */
+    public ImportOperationDto createImportOperation(String username, String filename, Integer totalRecords,
+            String fileKey, Long fileSize, String fileContentType) {
+        log.info("Creating import operation for user {} with file {} (key: {}, size: {} bytes)",
+                username, filename, fileKey, fileSize);
+        
+        ImportOperation operation = ImportOperation.builder()
+                .username(username)
+                .filename(filename)
+                .totalRecords(totalRecords)
+                .processedRecords(0)
+                .successfulRecords(0)
+                .status(ImportStatus.IN_PROGRESS)
+                .startTime(ZonedDateTime.now())
+                .fileKey(fileKey)
+                .fileSize(fileSize)
+                .fileContentType(fileContentType)
+                .build();
+
+        ImportOperation saved = importOperationRepository.save(operation);
+        return ImportOperationMapper.toDto(saved);
+    }
+
+    /**
+     * Обновляет информацию о файле в операции импорта
+     */
+    public ImportOperationDto updateFileInfo(Integer operationId, String fileKey, Long fileSize, String fileContentType) {
+        ImportOperation operation = importOperationRepository.findById(operationId);
+        if (operation == null) {
+            throw new IllegalArgumentException("Import operation not found with id: " + operationId);
+        }
+
+        operation.setFileKey(fileKey);
+        operation.setFileSize(fileSize);
+        operation.setFileContentType(fileContentType);
+        
+        ImportOperation updated = importOperationRepository.save(operation);
+        return ImportOperationMapper.toDto(updated);
+    }
+
+    /**
      * Обновляет прогресс операции импорта
      */
     public ImportOperationDto updateProgress(Integer operationId, Integer processedRecords, Integer successfulRecords) {

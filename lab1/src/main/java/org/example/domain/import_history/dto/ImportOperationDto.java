@@ -13,5 +13,8 @@ public record ImportOperationDto(
         Integer totalRecords,
         Integer processedRecords,
         Integer successfulRecords,
-        String errorMessage
+        String errorMessage,
+        String fileKey,
+        Long fileSize,
+        String fileContentType
 ) {}

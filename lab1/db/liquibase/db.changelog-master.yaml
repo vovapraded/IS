@@ -19,3 +19,5 @@ databaseChangeLog:
       file: db/changelogs/009-add-import-operations.yaml
   - include:
       file: db/changelogs/010-add-version-fields.yaml
+  - include:
+      file: db/changelogs/011-add-file-storage-fields.yaml

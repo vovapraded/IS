@@ -1,0 +1,46 @@
+databaseChangeLog:
+  - changeSet:
+      id: 011-add-file-storage-fields
+      author: system
+      comment: Add fields for MinIO file storage support to import_operations table
+      changes:
+        - addColumn:
+            tableName: import_operations
+            columns:
+              - column:
+                  name: file_key
+                  type: VARCHAR(500)
+                  constraints:
+                    nullable: true
+                  remarks: "MinIO object key for uploaded file"
+              - column:
+                  name: file_size
+                  type: BIGINT
+                  constraints:
+                    nullable: true
+                  remarks: "Size of uploaded file in bytes"
+              - column:
+                  name: file_content_type
+                  type: VARCHAR(100)
+                  constraints:
+                    nullable: true
+                  remarks: "MIME type of uploaded file"
+        - createIndex:
+            tableName: import_operations
+            indexName: idx_import_operations_file_key
+            columns:
+              - column:
+                  name: file_key
+      rollback:
+        - dropIndex:
+            tableName: import_operations
+            indexName: idx_import_operations_file_key
+        - dropColumn:
+            tableName: import_operations
+            columnName: file_content_type
+        - dropColumn:
+            tableName: import_operations
+            columnName: file_size
+        - dropColumn:
+            tableName: import_operations
+            columnName: file_key

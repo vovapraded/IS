@@ -27,6 +27,12 @@ public class ImportResource {
     @Inject
     private ImportOperationServiceMB importOperationService;
 
+    @Inject
+    private org.example.service.TransactionalFileImportService transactionalFileImportService;
+
+    @Inject
+    private org.example.service.MinIOService minIOService;
+
     /**
      * Импорт маршрутов из CSV файла
      */
@@ -55,8 +61,8 @@ public class ImportResource {
                     .build();
             }
 
-            // Выполнение импорта
-            ImportResultDto result = routeImportService.importRoutes(request);
+            // Выполнение транзакционного импорта с сохранением файла
+            ImportResultDto result = transactionalFileImportService.importRoutesWithFileStorage(request);
             
             if (result.status().name().equals("SUCCESS")) {
                 return Response.ok(result).build();
@@ -187,6 +193,53 @@ public class ImportResource {
             log.error("Error getting import stats", e);
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
                 .entity("{\"error\":\"Internal server error: " + e.getMessage() + "\"}")
+                .build();
+        }
+    }
+
+    /**
+     * Скачивание файла операции импорта
+     */
+    @GET
+    @Path("/operations/{operationId}/download")
+    @Produces(MediaType.APPLICATION_OCTET_STREAM)
+    public Response downloadImportFile(@PathParam("operationId") Integer operationId) {
+        try {
+            // Получаем информацию об операции импорта
+            ImportOperationDto operation = importOperationService.findById(operationId);
+            
+            if (operation.fileKey() == null) {
+                return Response.status(Response.Status.NOT_FOUND)
+                    .entity("{\"error\":\"No file associated with this import operation\"}")
+                    .type(MediaType.APPLICATION_JSON)
+                    .build();
+            }
+            
+            // Скачиваем файл из MinIO
+            org.example.service.MinIOService.FileDownloadResult fileResult =
+                minIOService.downloadFile(operation.fileKey());
+            
+            // Определяем имя файла для скачивания
+            String downloadFilename = operation.filename() != null ? operation.filename() : "import_file.csv";
+            
+            return Response.ok(fileResult.content())
+                    .header("Content-Disposition", "attachment; filename=\"" + downloadFilename + "\"")
+                    .header("Content-Type", fileResult.contentType() != null ?
+                            fileResult.contentType() : MediaType.APPLICATION_OCTET_STREAM)
+                    .header("Content-Length", String.valueOf(fileResult.size()))
+                    .build();
+                    
+        } catch (IllegalArgumentException e) {
+            return Response.status(Response.Status.NOT_FOUND)
+                .entity("{\"error\":\"Import operation not found\"}")
+                .type(MediaType.APPLICATION_JSON)
+                .build();
+                
+        } catch (Exception e) {
+            log.error("Error downloading file for import operation: {}", operationId, e);
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+                .entity("{\"error\":\"Failed to download file: " + e.getMessage() + "\"}")
+                .type(MediaType.APPLICATION_JSON)
                 .build();
         }
     }

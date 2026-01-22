@@ -63,6 +63,15 @@ public class ImportOperation {
     @Column(name = "error_message", columnDefinition = "TEXT")
     private String errorMessage; // Сообщение об ошибке (если есть)
 
+    @Column(name = "file_key", length = 500)
+    private String fileKey; // Ключ файла в MinIO
+
+    @Column(name = "file_size")
+    private Long fileSize; // Размер файла в байтах
+
+    @Column(name = "file_content_type", length = 100)
+    private String fileContentType; // MIME тип файла
+
     @PrePersist
     protected void onCreate() {
         if (startTime == null) {

@@ -55,6 +55,12 @@ dependencies {
     
     // SLF4J для логирования
     implementation("org.slf4j:slf4j-api:2.0.9")
+    
+    // MinIO client for S3-compatible storage
+    implementation("io.minio:minio:8.5.7")
+    
+    // OkHttp для MinIO client (required dependency)
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
 }
 
 
