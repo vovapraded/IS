@@ -108,15 +108,9 @@ public class TransactionalFileImportService {
 
             // Шаг 3: Выполняем импорт данных (в рамках той же транзакции БД)
             log.info("Transaction {}: Starting data import", context.getTransactionId());
-            ImportResultDto result = routeImportService.importRoutes(request);
+            ImportResultDto result = routeImportService.importRoutesWithOperation(request, operation.id());
             
-            // Обновляем операцию информацией о результате
-            if (result.status() == ImportStatus.SUCCESS) {
-                importOperationService.completeImportOperation(operation.id(), result.successfulRecords());
-            } else {
-                importOperationService.failImportOperation(operation.id(), result.message());
-            }
-
+            // RouteImportService теперь сам управляет состоянием операции
             return result;
         }
 

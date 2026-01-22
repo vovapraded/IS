@@ -11,6 +11,7 @@ import org.example.domain.coordinates.dto.CoordinatesDto;
 import org.example.domain.import_history.dto.ImportOperationDto;
 import org.example.domain.import_history.dto.ImportRequestDto;
 import org.example.domain.import_history.dto.ImportResultDto;
+import org.example.domain.import_history.entity.ImportOperation;
 import org.example.domain.import_history.entity.ImportStatus;
 import org.example.domain.location.dto.LocationDto;
 import org.example.domain.route.dto.RouteCreateDto;
@@ -48,23 +49,45 @@ public class RouteImportService {
      */
     @Transactional
     public ImportResultDto importRoutes(ImportRequestDto request) {
+        return importRoutesWithOperation(request, null);
+    }
+
+    /**
+     * Метод импорта маршрутов из CSV файла с указанным ID операции
+     */
+    @Transactional
+    public ImportResultDto importRoutesWithOperation(ImportRequestDto request, Integer existingOperationId) {
         log.info("Starting import process for user {} with file {}", request.username(), request.filename());
         
         List<String> errors = new ArrayList<>();
         List<RouteImportData> validRoutes = new ArrayList<>();
-        Integer operationId = null;
+        Integer operationId = existingOperationId;
         
         try {
             // Парсинг CSV данных
             List<RouteImportData> parsedRoutes = parseCSV(request.fileContent());
             
-            // Создание операции импорта
-            ImportOperationDto operation = importOperationService.createImportOperation(
-                request.username(), 
-                request.filename(), 
-                parsedRoutes.size()
-            );
-            operationId = operation.id();
+            // Создание операции импорта только если не передан existingOperationId
+            if (operationId == null) {
+                ImportOperationDto operation = importOperationService.createImportOperation(
+                    request.username(),
+                    request.filename(),
+                    parsedRoutes.size()
+                );
+                operationId = operation.id();
+            } else {
+                // Обновляем существующую операцию с количеством записей
+                ImportOperationDto operation = importOperationService.findById(operationId);
+                if (operation.totalRecords() == null) {
+                    importOperationService.updateProgress(operationId, 0, 0);
+                    // Устанавливаем totalRecords через обновление операции
+                    ImportOperation entity = em.find(ImportOperation.class, operationId);
+                    if (entity != null) {
+                        entity.setTotalRecords(parsedRoutes.size());
+                        em.merge(entity);
+                    }
+                }
+            }
             
             // Валидация каждой записи
             for (int i = 0; i < parsedRoutes.size(); i++) {
