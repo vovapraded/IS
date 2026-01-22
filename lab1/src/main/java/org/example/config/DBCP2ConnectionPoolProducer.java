@@ -40,9 +40,9 @@ public class DBCP2ConnectionPoolProducer {
         dbcp2DataSource = new BasicDataSource();
         
         dbcp2DataSource.setDriverClassName("org.postgresql.Driver");
-        dbcp2DataSource.setUrl(getConfigValue("DB_URL", "DBCP2_DB_URL", "jdbc:postgresql://localhost:5432/database"));
-        dbcp2DataSource.setUsername(getConfigValue("DB_USERNAME", "DBCP2_DB_USERNAME", "admin"));
-        dbcp2DataSource.setPassword(getConfigValue("DB_PASSWORD", "DBCP2_DB_PASSWORD", "admin"));
+        dbcp2DataSource.setUrl(getConfigValue("DB_URL"));
+        dbcp2DataSource.setUsername(getConfigValue("DB_USERNAME"));
+        dbcp2DataSource.setPassword(getConfigValue("DB_PASSWORD"));
         
         dbcp2DataSource.setInitialSize(0);
         dbcp2DataSource.setMinIdle(5);
@@ -129,18 +129,22 @@ public class DBCP2ConnectionPoolProducer {
         );
     }
     
-    private String getConfigValue(String envVar, String systemProp, String defaultValue) {
+    private String getConfigValue(String envVar) {
         String value = System.getenv(envVar);
-        if (value != null && !value.trim().isEmpty()) {
-            return value.trim();
+        if (value == null || value.trim().isEmpty()) {
+            // Возвращаем значения по умолчанию для локального развертывания
+            switch (envVar) {
+                case "DB_URL":
+                    return "jdbc:postgresql://localhost:5432/database";
+                case "DB_USERNAME":
+                    return "admin";
+                case "DB_PASSWORD":
+                    return "admin";
+                default:
+                    throw new RuntimeException("Environment variable " + envVar + " is not set or empty");
+            }
         }
-        
-        value = System.getProperty(systemProp);
-        if (value != null && !value.trim().isEmpty()) {
-            return value.trim();
-        }
-        
-        return defaultValue;
+        return value.trim();
     }
     
     @PreDestroy

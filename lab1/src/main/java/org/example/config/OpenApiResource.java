@@ -15,15 +15,14 @@ import jakarta.ws.rs.core.Context;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 import jakarta.ws.rs.core.UriInfo;
-import java.util.logging.Logger;
+import lombok.extern.slf4j.Slf4j;
 
 import java.util.HashSet;
 import java.util.Set;
 
 @Path("/openapi.json")
+@Slf4j
 public class OpenApiResource {
-
-    private static final Logger log = Logger.getLogger(OpenApiResource.class.getName());
 
     @Context
     private Application application;
@@ -59,7 +58,7 @@ public class OpenApiResource {
                 .build();
             
         } catch (Exception e) {
-            log.severe("Failed to generate OpenAPI specification: " + e.getMessage());
+            log.error("Failed to generate OpenAPI specification: {}", e.getMessage(), e);
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
                 .entity("{\"error\": \"Failed to generate OpenAPI specification\"}")
                 .type(MediaType.APPLICATION_JSON)

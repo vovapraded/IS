@@ -27,6 +27,7 @@ import org.example.domain.location.repository.LocationRepositoryMB;
 import org.example.domain.route.dto.RouteCursorPageDto;
 import org.example.exception.RouteNameAlreadyExistsException;
 import org.example.exception.RouteZeroDistanceException;
+import org.example.config.cache.CacheStatsLogging;
 
 import java.util.HashMap;
 import java.util.List;
@@ -151,6 +152,7 @@ public class RouteServiceMB {
 
     @Lock(LockType.WRITE)
     @AccessTimeout(value = 60, unit = TimeUnit.SECONDS)
+    @CacheStatsLogging
     public RouteDto createRoute(RouteCreateDto dto) {
         log.info("SERVICE: Starting route creation: {}", dto);
         
@@ -259,6 +261,7 @@ public class RouteServiceMB {
     }
 
     @Lock(LockType.READ)
+    @CacheStatsLogging
     public RouteDto findById(Integer id) {
         Route route = routeRepository.findById(id);
         if (route == null) {
@@ -271,6 +274,7 @@ public class RouteServiceMB {
      * Простой метод findAll без пагинации
      */
     @Lock(LockType.READ)
+    @CacheStatsLogging
     public List<RouteDto> findAll() {
         log.info("Finding all routes");
         List<Route> routes = routeRepository.findAll();
@@ -425,6 +429,7 @@ public class RouteServiceMB {
 
     @Lock(LockType.WRITE)
     @AccessTimeout(value = 60, unit = TimeUnit.SECONDS)
+    @CacheStatsLogging
     public RouteDto updateRoute(RouteUpdateDto dto) {
         log.info("UPDATE SERVICE: Starting route update for ID: {}", dto.id());
         
@@ -561,6 +566,7 @@ public class RouteServiceMB {
 
     @Lock(LockType.WRITE)
     @AccessTimeout(value = 60, unit = TimeUnit.SECONDS)
+    @CacheStatsLogging
     public void delete(Integer id) {
         log.info("DELETE SERVICE: Starting deletion for route with id {}", id);
         

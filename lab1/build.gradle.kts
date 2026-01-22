@@ -48,6 +48,13 @@ dependencies {
     
     // PostgreSQL JDBC драйвер
     implementation("org.postgresql:postgresql:42.7.3")
+    
+    // Ehcache для L2 кэша
+    implementation("org.hibernate:hibernate-jcache:6.2.13.Final")
+    implementation("org.ehcache:ehcache:3.10.8")
+    
+    // SLF4J для логирования
+    implementation("org.slf4j:slf4j-api:2.0.9")
 }
 
 

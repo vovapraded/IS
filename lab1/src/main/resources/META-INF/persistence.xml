@@ -20,6 +20,18 @@
             
             <!-- JTA настройки для WildFly -->
             <property name="hibernate.jta.track_by_thread" value="true"/>
+            
+            <!-- L2 Cache с использованием Ehcache через JCache API -->
+            <property name="hibernate.cache.use_second_level_cache" value="true"/>
+            <property name="hibernate.cache.use_query_cache" value="true"/>
+            
+            <!-- JCache RegionFactory для Hibernate 6.x -->
+            <property name="hibernate.cache.region.factory_class" value="org.hibernate.cache.jcache.JCacheRegionFactory"/>
+            <property name="hibernate.javax.cache.provider" value="org.ehcache.jsr107.EhcacheCachingProvider"/>
+            <property name="hibernate.javax.cache.uri" value="ehcache.xml"/>
+            
+            <!-- Статистика L2 кэша для мониторинга и CDI Interceptors -->
+            <property name="hibernate.generate_statistics" value="true"/>
         </properties>
     </persistence-unit>
 </persistence>

@@ -31,7 +31,7 @@ import org.example.domain.import_history.dto.ImportResultDto;
 import org.example.exception.ValidationException;
 import org.example.exception.RouteNameAlreadyExistsException;
 import org.example.exception.RouteZeroDistanceException;
-import java.util.logging.Logger;
+import lombok.extern.slf4j.Slf4j;
 
 import java.util.HashMap;
 import java.util.List;
@@ -42,9 +42,8 @@ import java.util.stream.Collectors;
 @Produces(MediaType.APPLICATION_JSON)
 @Consumes(MediaType.APPLICATION_JSON)
 @Tag(name = "Routes", description = "API для управления маршрутами")
+@Slf4j
 public class RouteResource {
-
-    private static final Logger log = Logger.getLogger(RouteResource.class.getName());
 
     @Inject
     private RouteServiceMB routeService;
@@ -90,7 +89,7 @@ public class RouteResource {
             return Response.ok(response).build();
             
         } catch (Exception e) {
-            log.severe("Pagination error: " + e.getMessage());
+            log.error("Pagination error: {}", e.getMessage(), e);
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
                     .entity(Map.of("error", "Pagination system error: " + e.getMessage()))
                     .build();
@@ -112,40 +111,40 @@ public class RouteResource {
             return Response.ok(response).build();
         } catch (jakarta.ejb.EJBException e) {
             // EJB контейнер оборачивает исключения из сервиса в EJBException
-            log.info("EJBException during route retrieval, checking root cause: " + e.getMessage());
+            log.info("EJBException during route retrieval, checking root cause: {}", e.getMessage());
             Throwable rootCause = e.getCause();
             
             if (rootCause instanceof IllegalArgumentException) {
                 IllegalArgumentException argEx = (IllegalArgumentException) rootCause;
                 if (argEx.getMessage() != null && argEx.getMessage().toLowerCase().contains("not found")) {
-                    log.warning("Route not found (from EJBException): " + argEx.getMessage());
+                    log.warn("Route not found (from EJBException): {}", argEx.getMessage());
                     return Response.status(Response.Status.NOT_FOUND)
                             .entity(Map.of("error", argEx.getMessage(), "error_type", "NOT_FOUND"))
                             .build();
                 }
-                log.warning("Invalid argument for route retrieval (from EJBException): " + argEx.getMessage());
+                log.warn("Invalid argument for route retrieval (from EJBException): {}", argEx.getMessage());
                 return Response.status(Response.Status.BAD_REQUEST)
                         .entity(Map.of("error", argEx.getMessage(), "error_type", "INVALID_ARGUMENT"))
                         .build();
             } else {
-                log.severe("EJBException with unexpected cause during route retrieval: " + e.getMessage());
+                log.error("EJBException with unexpected cause during route retrieval: {}", e.getMessage(), e);
                 return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
                         .entity(Map.of("error", "Не удалось получить маршрут", "error_type", "INTERNAL_ERROR"))
                         .build();
             }
         } catch (IllegalArgumentException e) {
             if (e.getMessage() != null && e.getMessage().toLowerCase().contains("not found")) {
-                log.warning("Route not found: " + e.getMessage());
+                log.warn("Route not found: {}", e.getMessage());
                 return Response.status(Response.Status.NOT_FOUND)
                         .entity(Map.of("error", e.getMessage(), "error_type", "NOT_FOUND"))
                         .build();
             }
-            log.warning("Invalid argument for route retrieval: " + e.getMessage());
+            log.warn("Invalid argument for route retrieval: {}", e.getMessage());
             return Response.status(Response.Status.BAD_REQUEST)
                     .entity(Map.of("error", e.getMessage(), "error_type", "INVALID_ARGUMENT"))
                     .build();
         } catch (Exception e) {
-            log.severe("Unexpected error during route retrieval: " + e.getMessage());
+            log.error("Unexpected error during route retrieval: {}", e.getMessage(), e);
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
                     .entity(Map.of("error", "Не удалось получить маршрут", "error_type", "INTERNAL_ERROR"))
                     .build();
@@ -160,22 +159,22 @@ public class RouteResource {
         @ApiResponse(responseCode = "400", description = "Неверные данные для создания")
     })
     public Response create(@Parameter(description = "Данные для создания маршрута") RouteCreateDto dto) {
-        log.info("CONTROLLER: Received request to create route: " + dto);
+        log.info("CONTROLLER: Received request to create route: {}", dto);
         
         try {
             RouteDto created = routeService.createRoute(dto);
-            log.info("CONTROLLER: Route created successfully: " + created.id());
+            log.info("CONTROLLER: Route created successfully: {}", created.id());
             Map<String, Object> response = new HashMap<>();
             response.put("route", created);
             return Response.status(Response.Status.CREATED).entity(response).build();
         } catch (jakarta.ejb.EJBException e) {
             // EJB контейнер оборачивает исключения из сервиса в EJBException
-            log.info("EJBException during route creation, checking root cause: " + e.getMessage());
+            log.info("EJBException during route creation, checking root cause: {}", e.getMessage());
             Throwable rootCause = e.getCause();
             
             if (rootCause instanceof RouteNameAlreadyExistsException) {
                 RouteNameAlreadyExistsException nameEx = (RouteNameAlreadyExistsException) rootCause;
-                log.warning("CONTROLLER: Route name already exists (from EJBException): " + nameEx.getMessage());
+                log.warn("CONTROLLER: Route name already exists (from EJBException): {}", nameEx.getMessage());
                 Map<String, Object> response = new HashMap<>();
                 response.put("error_type", "DUPLICATE_NAME");
                 response.put("error", nameEx.getMessage());
@@ -187,7 +186,7 @@ public class RouteResource {
                         .build();
             } else if (rootCause instanceof RouteZeroDistanceException) {
                 RouteZeroDistanceException zeroEx = (RouteZeroDistanceException) rootCause;
-                log.warning("CONTROLLER: Zero distance route validation failed (from EJBException): " + zeroEx.getMessage());
+                log.warn("CONTROLLER: Zero distance route validation failed (from EJBException): {}", zeroEx.getMessage());
                 Map<String, Object> response = new HashMap<>();
                 response.put("error_type", "ZERO_DISTANCE_ROUTE");
                 response.put("error", zeroEx.getMessage());
@@ -200,24 +199,24 @@ public class RouteResource {
                         .build();
             } else if (rootCause instanceof ValidationException) {
                 ValidationException valEx = (ValidationException) rootCause;
-                log.warning("CONTROLLER: Validation error during route creation (from EJBException): " + valEx.getMessage());
+                log.warn("CONTROLLER: Validation error during route creation (from EJBException): {}", valEx.getMessage());
                 return Response.status(Response.Status.BAD_REQUEST)
                         .entity(Map.of("error", valEx.getMessage(), "error_type", "VALIDATION_ERROR"))
                         .build();
             } else if (rootCause instanceof IllegalArgumentException) {
                 IllegalArgumentException argEx = (IllegalArgumentException) rootCause;
-                log.warning("CONTROLLER: IllegalArgumentException during creation (from EJBException): " + argEx.getMessage());
+                log.warn("CONTROLLER: IllegalArgumentException during creation (from EJBException): {}", argEx.getMessage());
                 return Response.status(Response.Status.BAD_REQUEST)
                         .entity(Map.of("error", argEx.getMessage(), "error_type", "INVALID_ARGUMENT"))
                         .build();
             } else {
-                log.severe("EJBException with unexpected cause during route creation: " + e.getMessage());
+                log.error("EJBException with unexpected cause during route creation: {}", e.getMessage(), e);
                 return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
                         .entity(Map.of("error", "Ошибка выполнения при создании маршрута: " + e.getMessage(), "error_type", "INTERNAL_ERROR"))
                         .build();
             }
         } catch (RouteNameAlreadyExistsException e) {
-            log.warning("CONTROLLER: Route name already exists: " + e.getMessage());
+            log.warn("CONTROLLER: Route name already exists: {}", e.getMessage());
             Map<String, Object> response = new HashMap<>();
             response.put("error_type", "DUPLICATE_NAME");
             response.put("error", e.getMessage());
@@ -228,7 +227,7 @@ public class RouteResource {
                     .entity(response)
                     .build();
         } catch (RouteZeroDistanceException e) {
-            log.warning("CONTROLLER: Zero distance route validation failed: " + e.getMessage());
+            log.warn("CONTROLLER: Zero distance route validation failed: {}", e.getMessage());
             Map<String, Object> response = new HashMap<>();
             response.put("error_type", "ZERO_DISTANCE_ROUTE");
             response.put("error", e.getMessage());
@@ -240,12 +239,12 @@ public class RouteResource {
                     .entity(response)
                     .build();
         } catch (ValidationException e) {
-            log.warning("CONTROLLER: Validation error during route creation: " + e.getMessage());
+            log.warn("CONTROLLER: Validation error during route creation: {}", e.getMessage());
             return Response.status(Response.Status.BAD_REQUEST)
                     .entity(Map.of("error", e.getMessage(), "error_type", "VALIDATION_ERROR"))
                     .build();
         } catch (RuntimeException e) {
-            log.severe("CONTROLLER: Runtime error during route creation: " + e.getMessage());
+            log.error("CONTROLLER: Runtime error during route creation: {}", e.getMessage(), e);
             
             // Проверяем, является ли причина исключения нашим кастомным исключением
             Throwable rootCause = e;
@@ -276,7 +275,7 @@ public class RouteResource {
                 } else if (rootCause instanceof IllegalArgumentException) {
                     // ДОБАВЛЕНО: Обработка IllegalArgumentException в RuntimeException для создания
                     IllegalArgumentException argEx = (IllegalArgumentException) rootCause;
-                    log.warning("CONTROLLER: IllegalArgumentException wrapped in RuntimeException during creation: " + argEx.getMessage());
+                    log.warn("CONTROLLER: IllegalArgumentException wrapped in RuntimeException during creation: {}", argEx.getMessage());
                     return Response.status(Response.Status.BAD_REQUEST)
                             .entity(Map.of("error", argEx.getMessage(), "error_type", "INVALID_ARGUMENT"))
                             .build();
@@ -288,7 +287,7 @@ public class RouteResource {
                     .entity(Map.of("error", "Ошибка выполнения при создании маршрута: " + e.getMessage(), "error_type", "RUNTIME_ERROR"))
                     .build();
         } catch (Exception e) {
-            log.severe("CONTROLLER: Unexpected error during route creation: " + e.getMessage());
+            log.error("CONTROLLER: Unexpected error during route creation: {}", e.getMessage(), e);
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
                     .entity(Map.of("error", "Не удалось сохранить маршрут. Попробуйте еще раз.", "error_type", "INTERNAL_ERROR"))
                     .build();
@@ -306,7 +305,7 @@ public class RouteResource {
     public Response update(
             @Parameter(description = "ID маршрута") @PathParam("id") Integer id,
             @Parameter(description = "Данные для обновления") RouteUpdateDto dto) {
-        log.info("Received request to update route " + id + ": " + dto);
+        log.info("Received request to update route {}: {}", id, dto);
         if (!dto.id().equals(id)) {
             return Response.status(Response.Status.BAD_REQUEST)
                     .entity(Map.of("error", "ID в URL и в теле запроса не совпадают"))
@@ -315,18 +314,18 @@ public class RouteResource {
         
         try {
             RouteDto updated = routeService.updateRoute(dto);
-            log.info("Route updated successfully: " + updated.id());
+            log.info("Route updated successfully: {}", updated.id());
             Map<String, Object> response = new HashMap<>();
             response.put("route", updated);
             return Response.ok(response).build();
         } catch (jakarta.ejb.EJBException e) {
             // EJB контейнер оборачивает исключения из сервиса в EJBException
-            log.info("EJBException during route update, checking root cause: " + e.getMessage());
+            log.info("EJBException during route update, checking root cause: {}", e.getMessage());
             Throwable rootCause = e.getCause();
             
             if (rootCause instanceof RouteNameAlreadyExistsException) {
                 RouteNameAlreadyExistsException nameEx = (RouteNameAlreadyExistsException) rootCause;
-                log.warning("Route name already exists on update (from EJBException): " + nameEx.getMessage());
+                log.warn("Route name already exists on update (from EJBException): {}", nameEx.getMessage());
                 Map<String, Object> response = new HashMap<>();
                 response.put("error_type", "DUPLICATE_NAME");
                 response.put("error", nameEx.getMessage());
@@ -338,7 +337,7 @@ public class RouteResource {
                         .build();
             } else if (rootCause instanceof RouteZeroDistanceException) {
                 RouteZeroDistanceException zeroEx = (RouteZeroDistanceException) rootCause;
-                log.warning("Zero distance route validation failed on update (from EJBException): " + zeroEx.getMessage());
+                log.warn("Zero distance route validation failed on update (from EJBException): {}", zeroEx.getMessage());
                 Map<String, Object> response = new HashMap<>();
                 response.put("error_type", "ZERO_DISTANCE_ROUTE");
                 response.put("error", zeroEx.getMessage());
@@ -351,30 +350,30 @@ public class RouteResource {
                         .build();
             } else if (rootCause instanceof ValidationException) {
                 ValidationException valEx = (ValidationException) rootCause;
-                log.warning("Validation error during route update (from EJBException): " + valEx.getMessage());
+                log.warn("Validation error during route update (from EJBException): {}", valEx.getMessage());
                 return Response.status(Response.Status.BAD_REQUEST)
                         .entity(Map.of("error", valEx.getMessage(), "error_type", "VALIDATION_ERROR"))
                         .build();
             } else if (rootCause instanceof IllegalArgumentException) {
                 IllegalArgumentException argEx = (IllegalArgumentException) rootCause;
                 if (argEx.getMessage() != null && argEx.getMessage().toLowerCase().contains("not found")) {
-                    log.warning("Route not found during update (from EJBException): " + argEx.getMessage());
+                    log.warn("Route not found during update (from EJBException): {}", argEx.getMessage());
                     return Response.status(Response.Status.NOT_FOUND)
                             .entity(Map.of("error", argEx.getMessage(), "error_type", "NOT_FOUND"))
                             .build();
                 }
-                log.warning("Invalid argument during route update (from EJBException): " + argEx.getMessage());
+                log.warn("Invalid argument during route update (from EJBException): {}", argEx.getMessage());
                 return Response.status(Response.Status.BAD_REQUEST)
                         .entity(Map.of("error", argEx.getMessage(), "error_type", "INVALID_ARGUMENT"))
                         .build();
             } else {
-                log.severe("EJBException with unexpected cause during route update: " + e.getMessage());
+                log.error("EJBException with unexpected cause during route update: {}", e.getMessage(), e);
                 return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
                         .entity(Map.of("error", "Не удалось обновить маршрут: " + e.getMessage(), "error_type", "INTERNAL_ERROR"))
                         .build();
             }
         } catch (RouteNameAlreadyExistsException e) {
-            log.warning("Route name already exists on update: " + e.getMessage());
+            log.warn("Route name already exists on update: {}", e.getMessage());
             Map<String, Object> response = new HashMap<>();
             response.put("error_type", "DUPLICATE_NAME");
             response.put("error", e.getMessage());
@@ -385,7 +384,7 @@ public class RouteResource {
                     .entity(response)
                     .build();
         } catch (RouteZeroDistanceException e) {
-            log.warning("Zero distance route validation failed on update: " + e.getMessage());
+            log.warn("Zero distance route validation failed on update: {}", e.getMessage());
             Map<String, Object> response = new HashMap<>();
             response.put("error_type", "ZERO_DISTANCE_ROUTE");
             response.put("error", e.getMessage());
@@ -397,23 +396,23 @@ public class RouteResource {
                     .entity(response)
                     .build();
         } catch (ValidationException e) {
-            log.warning("Validation error during route update: " + e.getMessage());
+            log.warn("Validation error during route update: {}", e.getMessage());
             return Response.status(Response.Status.BAD_REQUEST)
                     .entity(Map.of("error", e.getMessage(), "error_type", "VALIDATION_ERROR"))
                     .build();
         } catch (IllegalArgumentException e) {
             if (e.getMessage() != null && e.getMessage().toLowerCase().contains("not found")) {
-                log.warning("Route not found during update: " + e.getMessage());
+                log.warn("Route not found during update: {}", e.getMessage());
                 return Response.status(Response.Status.NOT_FOUND)
                         .entity(Map.of("error", e.getMessage(), "error_type", "NOT_FOUND"))
                         .build();
             }
-            log.warning("Invalid argument during route update: " + e.getMessage());
+            log.warn("Invalid argument during route update: {}", e.getMessage());
             return Response.status(Response.Status.BAD_REQUEST)
                     .entity(Map.of("error", e.getMessage(), "error_type", "INVALID_ARGUMENT"))
                     .build();
         } catch (RuntimeException e) {
-            log.severe("CONTROLLER: Runtime error during route update: " + e.getMessage());
+            log.error("CONTROLLER: Runtime error during route update: {}", e.getMessage(), e);
             
             // Проверяем, является ли причина исключения нашим кастомным исключением
             Throwable rootCause = e;
@@ -444,7 +443,7 @@ public class RouteResource {
                 } else if (rootCause instanceof IllegalArgumentException) {
                     // ДОБАВЛЕНО: Обработка IllegalArgumentException в RuntimeException
                     IllegalArgumentException argEx = (IllegalArgumentException) rootCause;
-                    log.warning("CONTROLLER: IllegalArgumentException wrapped in RuntimeException: " + argEx.getMessage());
+                    log.warn("CONTROLLER: IllegalArgumentException wrapped in RuntimeException: {}", argEx.getMessage());
                     return Response.status(Response.Status.BAD_REQUEST)
                             .entity(Map.of("error", argEx.getMessage(), "error_type", "INVALID_ARGUMENT"))
                             .build();
@@ -456,7 +455,7 @@ public class RouteResource {
                     .entity(Map.of("error", "Ошибка выполнения при обновлении маршрута: " + e.getMessage(), "error_type", "RUNTIME_ERROR"))
                     .build();
         } catch (Exception e) {
-            log.severe("CONTROLLER: Unexpected error during route update: " + e.getMessage());
+            log.error("CONTROLLER: Unexpected error during route update: {}", e.getMessage(), e);
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
                     .entity(Map.of("error", "Не удалось обновить маршрут. Попробуйте еще раз.", "error_type", "INTERNAL_ERROR"))
                     .build();
@@ -477,7 +476,7 @@ public class RouteResource {
             @Parameter(description = "ID маршрута для перепривязки начальной локации") @QueryParam("fromLocationTargetRouteId") Integer fromLocationTargetRouteId,
             @Parameter(description = "ID маршрута для перепривязки конечной локации") @QueryParam("toLocationTargetRouteId") Integer toLocationTargetRouteId,
             @Parameter(description = "ID общего целевого маршрута") @QueryParam("targetRouteId") Integer targetRouteId) {
-        log.info("Received request to delete route " + id);
+        log.info("Received request to delete route {}", id);
         
         try {
             if (targetRouteId != null) {
@@ -487,11 +486,11 @@ public class RouteResource {
             } else {
                 routeService.delete(id);
             }
-            log.info("Route " + id + " deleted successfully");
+            log.info("Route {} deleted successfully", id);
             return Response.noContent().build();
         } catch (jakarta.ejb.EJBException e) {
             // EJB контейнер оборачивает исключения из сервиса в EJBException
-            log.info("EJBException during route deletion, checking root cause: " + e.getMessage());
+            log.info("EJBException during route deletion, checking root cause: {}", e.getMessage());
             Throwable rootCause = e.getCause();
             
             if (rootCause instanceof IllegalArgumentException) {
@@ -501,7 +500,7 @@ public class RouteResource {
                     // Определяем конкретный тип ошибки по сообщению
                     if (message.toLowerCase().contains("route not found with id: " + id)) {
                         // Это ошибка именно для удаляемого маршрута
-                        log.info("Route " + id + " not found during deletion (from EJBException)");
+                        log.info("Route {} not found during deletion (from EJBException)", id);
                         return Response.status(Response.Status.NOT_FOUND)
                                 .entity(Map.of("error", "Маршрут не найден", "error_type", "NOT_FOUND"))
                                 .build();
@@ -510,26 +509,26 @@ public class RouteResource {
                               message.toLowerCase().contains("from location target route not found") ||
                               message.toLowerCase().contains("to location target route not found")) {
                         // Это ошибка в target route для rebinding
-                        log.warning("Target route not found during deletion with rebinding (from EJBException): " + message);
+                        log.warn("Target route not found during deletion with rebinding (from EJBException): {}", message);
                         return Response.status(Response.Status.BAD_REQUEST)
                                 .entity(Map.of("error", "Указанный целевой маршрут не найден: " + message, "error_type", "TARGET_ROUTE_NOT_FOUND"))
                                 .build();
                     } else {
                         // Другие типы IllegalArgumentException
-                        log.warning("Invalid argument during route deletion (from EJBException): " + message);
+                        log.warn("Invalid argument during route deletion (from EJBException): {}", message);
                         return Response.status(Response.Status.BAD_REQUEST)
                                 .entity(Map.of("error", message, "error_type", "INVALID_ARGUMENT"))
                                 .build();
                     }
                 } else {
-                    log.warning("IllegalArgumentException with null message during route deletion (from EJBException)");
+                    log.warn("IllegalArgumentException with null message during route deletion (from EJBException)");
                     return Response.status(Response.Status.BAD_REQUEST)
                             .entity(Map.of("error", "Некорректные параметры", "error_type", "INVALID_ARGUMENT"))
                             .build();
                 }
             } else {
                 // Если внутри EJBException не IllegalArgumentException, то обрабатываем как обычную ошибку
-                log.severe("EJBException with unexpected cause during route deletion: " + e.getMessage());
+                log.error("EJBException with unexpected cause during route deletion: {}", e.getMessage(), e);
                 return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
                         .entity(Map.of("error", "Не удалось удалить маршрут: " + e.getMessage(), "error_type", "INTERNAL_ERROR"))
                         .build();
@@ -540,7 +539,7 @@ public class RouteResource {
                 // Определяем конкретный тип ошибки по сообщению
                 if (message.toLowerCase().contains("route not found with id: " + id)) {
                     // Это ошибка именно для удаляемого маршрута
-                    log.info("Route " + id + " not found during deletion");
+                    log.info("Route {} not found during deletion", id);
                     return Response.status(Response.Status.NOT_FOUND)
                             .entity(Map.of("error", "Маршрут не найден", "error_type", "NOT_FOUND"))
                             .build();
@@ -549,29 +548,29 @@ public class RouteResource {
                           message.toLowerCase().contains("from location target route not found") ||
                           message.toLowerCase().contains("to location target route not found")) {
                     // Это ошибка в target route для rebinding
-                    log.warning("Target route not found during deletion with rebinding: " + message);
+                    log.warn("Target route not found during deletion with rebinding: {}", message);
                     return Response.status(Response.Status.BAD_REQUEST)
                             .entity(Map.of("error", "Указанный целевой маршрут не найден: " + message, "error_type", "TARGET_ROUTE_NOT_FOUND"))
                             .build();
                 } else {
                     // Другие типы IllegalArgumentException
-                    log.warning("Invalid argument during route deletion: " + message);
+                    log.warn("Invalid argument during route deletion: {}", message);
                     return Response.status(Response.Status.BAD_REQUEST)
                             .entity(Map.of("error", message, "error_type", "INVALID_ARGUMENT"))
                             .build();
                 }
             } else {
-                log.warning("IllegalArgumentException with null message during route deletion");
+                log.warn("IllegalArgumentException with null message during route deletion");
                 return Response.status(Response.Status.BAD_REQUEST)
                         .entity(Map.of("error", "Некорректные параметры", "error_type", "INVALID_ARGUMENT"))
                         .build();
             }
         } catch (jakarta.persistence.OptimisticLockException e) {
             // ИСПРАВЛЕНО: Обработка OptimisticLockException при concurrent deletion
-            log.info("OptimisticLockException during route " + id + " deletion - likely concurrent deletion, treating as success");
+            log.info("OptimisticLockException during route {} deletion - likely concurrent deletion, treating as success", id);
             return Response.noContent().build(); // Маршрут уже удален другой транзакцией
         } catch (Exception e) {
-            log.severe("Unexpected error during route deletion: " + e.getMessage());
+            log.error("Unexpected error during route deletion: {}", e.getMessage(), e);
             e.printStackTrace(); // Для отладки
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
                     .entity(Map.of("error", "Не удалось удалить маршрут", "error_type", "INTERNAL_ERROR"))
@@ -588,7 +587,7 @@ public class RouteResource {
             List<CoordinatesDto> coordinates = routeService.getAvailableCoordinates();
             return Response.ok(coordinates).build();
         } catch (Exception e) {
-            log.severe("Error loading coordinates: " + e.getMessage());
+            log.error("Error loading coordinates: {}", e.getMessage(), e);
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
                     .entity(Map.of("error", "Failed to load coordinates"))
                     .build();
@@ -604,7 +603,7 @@ public class RouteResource {
             List<LocationDto> locations = routeService.getAvailableLocations();
             return Response.ok(locations).build();
         } catch (Exception e) {
-            log.severe("Error loading locations: " + e.getMessage());
+            log.error("Error loading locations: {}", e.getMessage(), e);
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
                     .entity(Map.of("error", "Failed to load locations"))
                     .build();
@@ -624,40 +623,40 @@ public class RouteResource {
             return Response.ok(dependencies).build();
         } catch (jakarta.ejb.EJBException e) {
             // EJB контейнер оборачивает исключения из сервиса в EJBException
-            log.info("EJBException during dependency check, checking root cause: " + e.getMessage());
+            log.info("EJBException during dependency check, checking root cause: {}", e.getMessage());
             Throwable rootCause = e.getCause();
             
             if (rootCause instanceof IllegalArgumentException) {
                 IllegalArgumentException argEx = (IllegalArgumentException) rootCause;
                 if (argEx.getMessage() != null && argEx.getMessage().toLowerCase().contains("not found")) {
-                    log.warning("Route not found for dependency check (from EJBException): " + argEx.getMessage());
+                    log.warn("Route not found for dependency check (from EJBException): {}", argEx.getMessage());
                     return Response.status(Response.Status.NOT_FOUND)
                             .entity(Map.of("error", argEx.getMessage(), "error_type", "NOT_FOUND"))
                             .build();
                 }
-                log.warning("Invalid argument for dependency check (from EJBException): " + argEx.getMessage());
+                log.warn("Invalid argument for dependency check (from EJBException): {}", argEx.getMessage());
                 return Response.status(Response.Status.BAD_REQUEST)
                         .entity(Map.of("error", argEx.getMessage(), "error_type", "INVALID_ARGUMENT"))
                         .build();
             } else {
-                log.severe("EJBException with unexpected cause during dependency check: " + e.getMessage());
+                log.error("EJBException with unexpected cause during dependency check: {}", e.getMessage(), e);
                 return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
                         .entity(Map.of("error", "Не удалось проверить зависимости маршрута", "error_type", "INTERNAL_ERROR"))
                         .build();
             }
         } catch (IllegalArgumentException e) {
             if (e.getMessage() != null && e.getMessage().toLowerCase().contains("not found")) {
-                log.warning("Route not found for dependency check: " + e.getMessage());
+                log.warn("Route not found for dependency check: {}", e.getMessage());
                 return Response.status(Response.Status.NOT_FOUND)
                         .entity(Map.of("error", e.getMessage(), "error_type", "NOT_FOUND"))
                         .build();
             }
-            log.warning("Invalid argument for dependency check: " + e.getMessage());
+            log.warn("Invalid argument for dependency check: {}", e.getMessage());
             return Response.status(Response.Status.BAD_REQUEST)
                     .entity(Map.of("error", e.getMessage(), "error_type", "INVALID_ARGUMENT"))
                     .build();
         } catch (Exception e) {
-            log.severe("Error checking dependencies for route " + id + ": " + e.getMessage());
+            log.error("Error checking dependencies for route {}: {}", id, e.getMessage(), e);
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
                     .entity(Map.of("error", "Не удалось проверить зависимости маршрута", "error_type", "INTERNAL_ERROR"))
                     .build();

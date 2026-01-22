@@ -2,6 +2,7 @@ package org.example.domain.route.entity;
 
 import java.time.ZonedDateTime;
 
+import jakarta.persistence.Cacheable;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EntityResult;
@@ -24,11 +25,15 @@ import jakarta.validation.constraints.Positive;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+import org.hibernate.annotations.Cache;
+import org.hibernate.annotations.CacheConcurrencyStrategy;
 import org.example.domain.coordinates.entity.Coordinates;
 import org.example.domain.location.entity.Location;
 
 @Entity
 @Table(name = "routes")
+@Cacheable
+@Cache(usage = CacheConcurrencyStrategy.READ_WRITE)
 @SqlResultSetMappings({
     @SqlResultSetMapping(
         name = "RouteMapping",
@@ -67,8 +72,9 @@ public class Route {
 
     @NotNull
     @Valid
-    @ManyToOne(optional = false, fetch = FetchType.LAZY)
+    @ManyToOne(optional = false, fetch = FetchType.EAGER)
     @JoinColumn(name = "coordinates_id", nullable = false)
+    @Cache(usage = CacheConcurrencyStrategy.READ_WRITE)
     private Coordinates coordinates;
 
     @NotNull
@@ -77,14 +83,16 @@ public class Route {
 
     @NotNull
     @Valid
-    @ManyToOne(optional = false, fetch = FetchType.LAZY)
+    @ManyToOne(optional = false, fetch = FetchType.EAGER)
     @JoinColumn(name = "from_location_id", nullable = false)
+    @Cache(usage = CacheConcurrencyStrategy.READ_WRITE)
     private Location from;
 
     @NotNull
     @Valid
-    @ManyToOne(optional = false, fetch = FetchType.LAZY)
+    @ManyToOne(optional = false, fetch = FetchType.EAGER)
     @JoinColumn(name = "to_location_id", nullable = false)
+    @Cache(usage = CacheConcurrencyStrategy.READ_WRITE)
     private Location to;
 
 

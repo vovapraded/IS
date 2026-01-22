@@ -8,15 +8,14 @@ import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 import jakarta.ws.rs.core.UriInfo;
 import jakarta.ws.rs.core.Context;
+import lombok.extern.slf4j.Slf4j;
 
 import java.io.InputStream;
 import java.net.URI;
-import java.util.logging.Logger;
 
 @Path("/")
+@Slf4j
 public class SwaggerResource {
-
-    private static final Logger log = Logger.getLogger(SwaggerResource.class.getName());
 
     @Context
     private UriInfo uriInfo;
@@ -34,7 +33,7 @@ public class SwaggerResource {
             
             return Response.temporaryRedirect(swaggerUiUri).build();
         } catch (Exception e) {
-            log.severe("Error redirecting to Swagger UI: " + e.getMessage());
+            log.error("Error redirecting to Swagger UI: {}", e.getMessage(), e);
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
                 .entity("{\"error\": \"Error redirecting to Swagger UI\"}")
                 .build();
@@ -73,7 +72,7 @@ public class SwaggerResource {
             
             InputStream resource = getClass().getResourceAsStream(resourcePath);
             if (resource == null) {
-                log.warning("WebJar resource not found: " + resourcePath);
+                log.warn("WebJar resource not found: {}", resourcePath);
                 return Response.status(Response.Status.NOT_FOUND).build();
             }
 
@@ -84,7 +83,7 @@ public class SwaggerResource {
                 .build();
                 
         } catch (Exception e) {
-            log.severe("Error serving WebJar resource " + path + ": " + e.getMessage());
+            log.error("Error serving WebJar resource {}: {}", path, e.getMessage(), e);
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR).build();
         }
     }
@@ -164,7 +163,7 @@ public class SwaggerResource {
             return Response.ok(html, MediaType.TEXT_HTML).build();
             
         } catch (Exception e) {
-            log.severe("Error serving Swagger UI: " + e.getMessage());
+            log.error("Error serving Swagger UI: {}", e.getMessage(), e);
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
                 .entity("Error loading Swagger UI")
                 .build();
