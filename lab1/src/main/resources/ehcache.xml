@@ -1,0 +1,103 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xmlns="http://www.ehcache.org/v3"
+        xsi:schemaLocation="http://www.ehcache.org/v3
+        http://www.ehcache.org/schema/ehcache-core-3.10.xsd">
+
+    <!-- Настройки кэш-менеджера -->
+    <service>
+        <jsr107:defaults enable-statistics="true" enable-management="true"
+                         xmlns:jsr107="http://www.ehcache.org/v3/jsr107"/>
+    </service>
+
+    <!-- Кэш для сущности Route -->
+    <cache alias="org.example.domain.route.entity.Route">
+        <key-type>java.lang.Object</key-type>
+        <value-type>org.example.domain.route.entity.Route</value-type>
+        <expiry>
+            <ttl unit="minutes">10</ttl>
+        </expiry>
+        <resources>
+            <heap unit="entries">1000</heap>
+        </resources>
+        <statistics enable="true"/>
+    </cache>
+
+    <!-- Кэш для сущности Coordinates -->
+    <cache alias="org.example.domain.coordinates.entity.Coordinates">
+        <key-type>java.lang.Object</key-type>
+        <value-type>org.example.domain.coordinates.entity.Coordinates</value-type>
+        <expiry>
+            <ttl unit="minutes">15</ttl>
+        </expiry>
+        <resources>
+            <heap unit="entries">500</heap>
+        </resources>
+        <statistics enable="true"/>
+    </cache>
+
+    <!-- Кэш для сущности Location -->
+    <cache alias="org.example.domain.location.entity.Location">
+        <key-type>java.lang.Object</key-type>
+        <value-type>org.example.domain.location.entity.Location</value-type>
+        <expiry>
+            <ttl unit="minutes">15</ttl>
+        </expiry>
+        <resources>
+            <heap unit="entries">500</heap>
+        </resources>
+        <statistics enable="true"/>
+    </cache>
+
+    <!-- Кэш для коллекций (associations) -->
+    <cache alias="org.example.domain.route.entity.Route.coordinates">
+        <key-type>java.lang.Object</key-type>
+        <value-type>java.lang.Object</value-type>
+        <expiry>
+            <ttl unit="minutes">10</ttl>
+        </expiry>
+        <resources>
+            <heap unit="entries">200</heap>
+        </resources>
+        <statistics enable="true"/>
+    </cache>
+
+    <!-- Стандартные Hibernate кэш-регионы -->
+    <cache alias="default-query-results-region">
+        <key-type>java.lang.Object</key-type>
+        <value-type>java.lang.Object</value-type>
+        <expiry>
+            <ttl unit="minutes">5</ttl>
+        </expiry>
+        <resources>
+            <heap unit="entries">1000</heap>
+        </resources>
+        <statistics enable="true"/>
+    </cache>
+
+    <cache alias="default-update-timestamps-region">
+        <key-type>java.lang.Object</key-type>
+        <value-type>java.lang.Object</value-type>
+        <expiry>
+            <ttl unit="minutes">60</ttl>
+        </expiry>
+        <resources>
+            <heap unit="entries">5000</heap>
+        </resources>
+        <statistics enable="true"/>
+    </cache>
+
+    <!-- Общий кэш для entity данных -->
+    <cache-template name="entityCacheTemplate">
+        <key-type>java.lang.Object</key-type>
+        <value-type>java.lang.Object</value-type>
+        <expiry>
+            <ttl unit="minutes">10</ttl>
+        </expiry>
+        <resources>
+            <heap unit="entries">1000</heap>
+        </resources>
+        <statistics enable="true"/>
+    </cache-template>
+
+</config>
